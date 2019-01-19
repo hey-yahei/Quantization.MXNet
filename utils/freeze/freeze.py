@@ -15,6 +15,21 @@ __all__ = ['quantize_symbol', 'quantize_params', 'FreezeHelper']
 
 def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
                      quantized_dtype='uint8', calib_quantize_op=False):
+    """
+    Quantize symbol.
+    :param sym: mxnet.symbol.Symbol
+        The symbol to quantize.
+    :param excluded_symbols: list of str
+        The names of symbols to exclude.
+    :param offline_params: list of str
+        The names of parameters to quantize offline.
+    :param quantized_dtype: {"int8", "uint8"}
+        The data type that you will quantize to.
+    :param calib_quantize_op: bool
+        Calibrate or not.(Only for quantization online.
+    :return: mxnet.symbol.Symbol
+        The symbol that has been quantized.
+    """
     assert isinstance(excluded_symbols, list)
     num_excluded_symbols = len(excluded_symbols)
     exclude = [s.handle for s in excluded_symbols]
@@ -37,6 +52,23 @@ def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
 
 def quantize_symbol(sym, excluded_symbols=[], offline_params=[],
                      quantized_dtype='uint8', calib_quantize_op=False, quantize_input_offline=True):
+    """
+    Quantize symbol.
+    :param sym: mxnet.symbol.Symbol
+        The symbol to quantize.
+    :param excluded_symbols: list of mxnet.base.SymbolHandle
+        The handle of symbols to exclude.
+    :param offline_params: list of str
+        The names of parameters to quantize offline.
+    :param quantized_dtype: str {"int8", "uint8"}
+        The data type that you will quantize to.
+    :param calib_quantize_op: bool
+        Calibrate or not.(Only for quantization online.
+    :param quantize_input_offline: bool
+        Quantize the input of blocks such as convs, pools or not.
+    :return: mxnet.symbol.Symbol
+        The symbol that has been quantized.
+    """
     sym = _quantize_symbol(sym=sym,
                            excluded_symbols=excluded_symbols,
                            offline_params=offline_params,
@@ -68,6 +100,21 @@ def quantize_symbol(sym, excluded_symbols=[], offline_params=[],
 
 
 def quantize_params(qsym, params):
+    """
+    Quantize parameters.
+    :param qsym: mxnet.symbol.Symbol
+        The symbol that has been quantized by function `quantize_symbol`.
+    :param params: dict with (pname, value) key-value pairs.
+        `pname`: str
+            The name of parameter.
+        `value`: mxnet.nd.NDArry
+            The value of parameter with dtype "float32".
+    :return: dict with (pname, value) key-value pairs.
+        `pname`: str
+            The name of quantized parameter.
+        `value`: mxnet.nd.NDArry
+            The value of the parameter with dtype "uint8" or "int8".
+    """
     inputs_name = qsym.list_arguments()
     quantized_params = {}
     for name in inputs_name:
@@ -87,6 +134,17 @@ def quantize_params(qsym, params):
 
 class FreezeHelper(object):
     def __init__(self, net, params_filename, input_shape, tmp_filename="tmp_origin_net"):
+        """
+        A helper for freezing.
+        :param net: mxnet.gluon.nn.Block
+            The origin net that you want to load trained parameters and freeze.
+        :param params_filename: str
+            The filename of the trained parameters.
+        :param input_shape: tuple
+            The shape of input. For example, (1, 3, 224, 224) for MobileNet.
+        :param tmp_filename: str
+            The filename to output as temporary file.
+        """
         self.origin_net = net
         self.gluon_params_filename = params_filename
         self.tmp_filename = tmp_filename
@@ -128,6 +186,21 @@ class FreezeHelper(object):
 
     def freeze(self, excluded_symbol=[], offline_params=[], quantized_dtype="uint8",
                calib_quantize_op=False, quantize_input_offline=True):
+        """
+        Freeze the quantized model.
+        :param excluded_symbol: list of str
+            The names of symbols to exclude.
+        :param offline_params: list of str
+            Refer to `quantize_symbol` function.
+        :param quantized_dtype: str {"int8", "uint8"}
+            Refer to `quantize_symbol` function.
+        :param calib_quantize_op: bool
+            Refer to `quantize_symbol` function.
+        :param quantize_input_offline: bool
+            Refer to `quantize_symbol` function.
+        :return:
+        """
+
         exclude = [s for s in self.sym.get_internals() if s.name in excluded_symbol]
         qsym = quantize_symbol(sym=self.sym,
                                excluded_symbols=exclude,

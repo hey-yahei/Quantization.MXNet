@@ -7,7 +7,13 @@ __all__ = ["qparams_init"]
 
 
 def qparams_init(net):
-    # Initialize quantized parameters for convolution op
+    """
+    Initialize quantized parameters for convolution op
+    :param net: mxnet.gluon.nn.Block
+        The net to initialize.
+    :return: mxnet.gluon.nn.Block
+        The net that has been initialized.
+    """
     quant_params = net.collect_params(".*[min|max]")
     conv_params = [pname[:-len("_weight_min")] for pname in quant_params if pname.endswith("_weight_min")]
     input_params = [pname[:-len("_input_min")] for pname in quant_params if pname.endswith("_input_min")]

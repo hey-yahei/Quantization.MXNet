@@ -15,6 +15,19 @@ default_convert_fn = {
 
 
 def convert_model(net, exclude=[], convert_fn=default_convert_fn):
+    """
+    Convert the model to the one with simulated quantization.
+    :param net: mxnet.gluon.nn.Block
+        The net to convert.
+    :param exclude: list of mxnet.gluon.nn.Block
+        Blocks that want to exclude.
+    :param convert_fn: dict with (module, func) key-value pairs
+        `module`: mxnet.gluon.nn.Block
+        `func`: function `func(module) -> None`
+        Apply the function(value) to corresponding blocks(key).
+    :return: mxnet.gluon.nn.Block
+        The net that has been converted.
+    """
     # Convert network
     def _convert(m):
         if m in exclude:
@@ -45,9 +58,20 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
     net.quantize_input_offline = types.MethodType(_quantize_input_offline, net)
     net.quantize_input_online = types.MethodType(_quantize_input_online, net)
 
+    return net
+
 
 def convert_to_relu6(net, exclude=[]):
+    """
+    Convert ReLUs in net to ReLU6.
+    :param net: mxnet.gluon.nn.Block
+        The net to convert.
+    :param exclude: list of mxnet.gluon.nn.Activation
+        ReLUs blocks that want to exclude.
+    :return: mxnet.gluon.nn.Block
+        The net that has been converted.
+    """
     def _convert_to_relu6(m):
         if isinstance(m, nn.Activation) and m._act_type == "relu" and m not in exclude:
             convert_relu_to_relu6(m)
-    net.apply(_convert_to_relu6)
+    return net.apply(_convert_to_relu6)

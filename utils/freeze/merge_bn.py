@@ -53,5 +53,19 @@ def _merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
 
 
 def merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
+    """
+    Merge all batchnorm to convolution.
+    :param net: mxnet.gluon.nn.Block
+        The net to merge bn for.
+    :param conv_name: str
+        The keyword in name of convolutions.
+    :param bn_name: str
+        The keyword in name of batchnorms.
+    :param exclude: list of mxnet.gluon.nn.Conv2D
+        The convolutions to exclude.
+    :return: mxnet.gluon.nn.Block
+        The net that has been merged bn.
+    """
     _merge_bn(net, conv_name, bn_name, exclude)
     _bypass_bn(net, exclude)
+    return net

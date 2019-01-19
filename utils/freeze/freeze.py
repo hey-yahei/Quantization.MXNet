@@ -1,27 +1,16 @@
 #-*- coding: utf-8 -*-
 
 import ctypes
-import logging
-import os
-import numpy as np
 import json
-from mxnet import symbol
-from mxnet.base import _LIB, check_call, py_str
-from mxnet.base import c_array, c_str, mx_uint, c_str_array
-from mxnet.base import NDArrayHandle, SymbolHandle
+import os
+import functools
+from mxnet import symbol, nd, model
+from mxnet.base import _LIB, check_call
+from mxnet.base import c_array, c_str, mx_uint
+from mxnet.base import SymbolHandle
 from mxnet.symbol import Symbol
-from mxnet.symbol import load as sym_load
-from mxnet import ndarray
-from mxnet.ndarray import load as nd_load
-from mxnet.ndarray import NDArray
-from mxnet.io import DataIter
-from mxnet.context import cpu, Context
-from mxnet.module import Module
 
-
-def quantize(data, min, max):
-    scale = (max - min) / (2 ** 8 - 1)
-    return ((data.clip(min, max) - min) / scale).round()
+__all__ = ['quantize_symbol', 'quantize_params', 'FreezeHelper']
 
 
 def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
@@ -47,14 +36,14 @@ def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
 
 
 def quantize_symbol(sym, excluded_symbols=[], offline_params=[],
-                     quantized_dtype='uint8', calib_quantize_op=False, quantize_input=True):
+                     quantized_dtype='uint8', calib_quantize_op=False, quantize_input_offline=True):
     sym = _quantize_symbol(sym=sym,
                            excluded_symbols=excluded_symbols,
                            offline_params=offline_params,
                            quantized_dtype=quantized_dtype,
                            calib_quantize_op=calib_quantize_op)
 
-    if quantize_input:
+    if quantize_input_offline:
         sym_json = json.loads(sym.tojson())
         for i, node in enumerate(sym_json['nodes']):
             if node['op'] == '_contrib_quantize':
@@ -78,13 +67,13 @@ def quantize_symbol(sym, excluded_symbols=[], offline_params=[],
     return sym
 
 
-def quantize_params(qsym, params, th_dict={}):
+def quantize_params(qsym, params):
     inputs_name = qsym.list_arguments()
     quantized_params = {}
     for name in inputs_name:
         if name.endswith('_quantize'):
             original_name = name[:-len('_quantize')]
-            val, vmin, vmax = ndarray.contrib.quantize(data=params[original_name],
+            val, vmin, vmax = nd.contrib.quantize(data=params[original_name],
                                                        min_range=params[original_name+"_min"],
                                                        max_range=params[original_name+"_max"],
                                                        out_type="uint8")
@@ -93,15 +82,62 @@ def quantize_params(qsym, params, th_dict={}):
             quantized_params[name+'_max'] = vmax
         elif name in params:
             quantized_params[name] = params[name]
-        # # ignore online quantize params?
-        # elif name.endswith(('_min')):
-        #     output = name[: - len('_min')]
-        #     if output in th_dict:
-        #         quantized_params[name] = ndarray.array([th_dict[output][0]])
-        # elif name.endswith(('_max')):
-        #     output = name[: - len('_max')]
-        #     if output in th_dict:
-        #         quantized_params[name] = ndarray.array([th_dict[output][1]])
     return quantized_params
+
+
+class FreezeHelper(object):
+    def __init__(self, net, params_filename, input_shape, tmp_filename="tmp_origin_net"):
+        self.origin_net = net
+        self.gluon_params_filename = params_filename
+        self.tmp_filename = tmp_filename
+        self.sym, self.args, self.auxes = None, None, None
+
+        net.load_parameters(params_filename, ignore_extra=True)
+        net.hybridize()
+        _ = net(nd.zeros(shape=input_shape))
+        net.export(self.tmp_filename, 0)
+        self.sym, self.args, self.auxes = model.load_checkpoint(self.tmp_filename, 0)
+
+    def __del__(self):
+        os.remove(self.tmp_filename + "-symbol.json")
+        os.remove(self.tmp_filename + "-0000.params")
+
+    def list_symbols(self, prefix="", suffix=""):
+        return [s for s in self.sym.get_internals() if s.name.startswith(prefix) and s.name.endswith(suffix)]
+
+    @staticmethod
+    def _is_number(s):
+        try:
+            _ = int(s)
+            return True
+        except:
+            return False
+
+    def _extract_qparams(self, net, gluon_params_filename):
+        gluon_params = nd.load(gluon_params_filename)
+        quantized_params = {}
+        for k in gluon_params.keys():
+            *others, attr_name = k.split(".")
+            atom_block = functools.reduce(
+                lambda b, n: b[int(n)] if self._is_number(n) else getattr(b, n),
+                others, net
+            )
+            if attr_name in ("weight_min", "weight_max", "input_min", "input_max"):
+                quantized_params[atom_block.name + "_" + attr_name] = gluon_params[k]
+        return quantized_params
+
+    def freeze(self, excluded_symbol=[], offline_params=[], quantized_dtype="uint8",
+               calib_quantize_op=False, quantize_input_offline=True):
+        exclude = [s for s in self.sym.get_internals() if s.name in excluded_symbol]
+        qsym = quantize_symbol(sym=self.sym,
+                               excluded_symbols=exclude,
+                               offline_params=offline_params,
+                               quantized_dtype=quantized_dtype,
+                               calib_quantize_op=calib_quantize_op,
+                               quantize_input_offline=quantize_input_offline)
+        quantized_params = self._extract_qparams(self.origin_net, self.gluon_params_filename)
+        self.args.update(quantized_params)
+        qargs = quantize_params(qsym, self.args)
+        return qsym, qargs, self.auxes
 
 

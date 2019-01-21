@@ -117,4 +117,4 @@ dmypy.json
 .idea
 
 # Examples
-examples
+examples/*.ipynb

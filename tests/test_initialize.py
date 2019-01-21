@@ -5,8 +5,8 @@ sys.path.append("..")
 
 from mxnet import nd
 from mxnet.gluon.model_zoo.vision import vgg16
-from utils.convert import convert_model
-from utils.initialize import qparams_init
+from quantize.convert import convert_model
+from quantize.initialize import qparams_init
 
 
 def test_qparams_init():

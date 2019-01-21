@@ -8,7 +8,7 @@ import time
 from mxnet import sym, nd
 from mxnet.gluon.model_zoo.vision import mobilenet1_0
 
-from utils.freeze import quantize_symbol
+from quantize.freeze import quantize_symbol
 
 
 def test_quantize_symbol():

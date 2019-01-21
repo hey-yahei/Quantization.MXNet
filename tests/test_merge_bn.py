@@ -8,7 +8,7 @@ import time
 from mxnet import nd
 from mxnet.gluon.model_zoo.vision import mobilenet1_0
 
-from utils.freeze import merge_bn
+from quantize.freeze import merge_bn
 
 
 def test_check_output():

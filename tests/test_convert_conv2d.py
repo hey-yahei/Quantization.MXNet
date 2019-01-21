@@ -5,7 +5,7 @@ sys.path.append("..")
 
 from mxnet import nd
 from mxnet.gluon.nn import Conv2D
-from utils.convert import convert_conv2d
+from quantize.convert import convert_conv2d
 
 
 if __name__ == "__main__":

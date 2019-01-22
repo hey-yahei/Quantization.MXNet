@@ -7,6 +7,7 @@ from mxnet.gluon.parameter import ParameterDict
 from mxnet.gluon import nn
 
 __all__ = ['merge_bn']
+__author__ = "YaHei"
 
 
 def _bypass_bn(net, exclude=[]):
@@ -14,7 +15,7 @@ def _bypass_bn(net, exclude=[]):
         return x
     def _bypass(m):
         if isinstance(m ,nn.BatchNorm) and m not in exclude:
-            m._params = ParameterDict()
+            # m._params = ParameterDict()
             m.hybrid_forward = types.MethodType(_forward, m)
     net.apply(_bypass)
 

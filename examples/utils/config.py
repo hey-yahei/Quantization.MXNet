@@ -48,6 +48,7 @@ class TrainConfig(Config):
         self.val_batch_size = 32
         self.train_num_prefetch_workers = 4
         self.val_num_prefetch_workers = 4
+        self.learning_rate = 1e-5
         # Record
         self.checkpoint_dir = "./checkpoints"
         self.tb_main_tag = "train_config"

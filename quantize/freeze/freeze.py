@@ -11,6 +11,7 @@ from mxnet.base import SymbolHandle
 from mxnet.symbol import Symbol
 
 __all__ = ['quantize_symbol', 'quantize_params', 'FreezeHelper']
+__author__ = "YaHei"
 
 
 def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],

@@ -7,6 +7,7 @@ from .convert_conv2d import convert_conv2d_quantize_input
 from .convert_act import convert_relu_to_relu6
 
 __all__ = ["convert_model", "convert_to_relu6"]
+__author__ = "YaHei"
 
 default_convert_fn = {
     nn.Conv2D: convert_conv2d_quantize_input,

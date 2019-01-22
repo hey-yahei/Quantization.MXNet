@@ -8,7 +8,10 @@ import time
 from mxnet import nd
 from mxnet.gluon.model_zoo.vision import mobilenet1_0
 
+from quantize.convert import convert_model
+from quantize.initialize import qparams_init as qinit
 from quantize.freeze import merge_bn
+from quantize.freeze.merge_bn import _merge_bn
 
 
 def test_check_output():
@@ -57,6 +60,14 @@ def test_export():
     print()
 
 
+def test_merge_bn():
+    net = mobilenet1_0(pretrained=True)
+    convert_model(net)
+    qinit(net)
+    _merge_bn(net)
+
+
 if __name__ == "__main__":
-    test_check_output()
-    test_export()
+    # test_check_output()
+    # test_export()
+    test_merge_bn()

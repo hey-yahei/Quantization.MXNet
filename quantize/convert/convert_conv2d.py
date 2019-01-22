@@ -6,6 +6,7 @@ from mxnet import nd
 from mxnet.gluon.nn import Conv2D
 
 __all__ = ["convert_conv2d", "convert_conv2d_quantize_input"]
+__author__ = "YaHei"
 
 
 def _conv2d_forward(self, F, x, weight, bias=None,

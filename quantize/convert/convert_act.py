@@ -4,6 +4,7 @@ import types
 from mxnet.gluon.nn import Activation
 
 __all__ = ["convert_relu_to_relu6"]
+__author__ = "YaHei"
 
 
 def _relu6_forward(self, F, x):

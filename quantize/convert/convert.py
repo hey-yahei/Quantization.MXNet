@@ -3,15 +3,17 @@
 import types
 
 from mxnet.gluon import nn
-from .convert_conv2d import convert_conv2d_quantize_input
+from .convert_conv2d import gen_conv2d_converter
 from .convert_act import convert_relu_to_relu6
+from .convert_bn import bypass_bn
 
 __all__ = ["convert_model", "convert_to_relu6"]
 __author__ = "YaHei"
 
 default_convert_fn = {
-    nn.Conv2D: convert_conv2d_quantize_input,
-    nn.Activation: convert_relu_to_relu6
+    nn.Conv2D: gen_conv2d_converter(quantize_input=True, fake_bn=False),
+    nn.Activation: convert_relu_to_relu6,
+    nn.BatchNorm: None
 }
 
 
@@ -45,8 +47,12 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
     # Add method to update ema for `input_min` and `input_max` in convs
     def _update_ema(self, momentum=0.99):
         for qconv in self.quantized_convs:
-            qconv.input_min.set_data( (1 - momentum) * qconv.current_input_min + momentum * qconv.input_min.data() )
-            qconv.input_max.set_data( (1 - momentum) * qconv.current_input_max + momentum * qconv.input_max.data() )
+            if getattr(qconv, "input_min", None) is not None:
+                qconv.input_min.set_data((1 - momentum) * qconv.current_input_min + momentum * qconv.input_min.data())
+                qconv.input_max.set_data((1 - momentum) * qconv.current_input_max + momentum * qconv.input_max.data())
+            if getattr(qconv, "gamma", None) is not None:
+                qconv.running_mean.set_data((1 - momentum) * qconv.current_mean + momentum * qconv.running_mean.data())
+                qconv.running_var.set_data((1 - momentum) * qconv.current_var + momentum * qconv.running_var.data())
     net.update_ema = types.MethodType(_update_ema, net)
 
     # Add method to control the mode of input quantization as online or offline

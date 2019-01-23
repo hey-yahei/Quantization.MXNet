@@ -11,9 +11,9 @@ __all__ = ["convert_model", "convert_to_relu6"]
 __author__ = "YaHei"
 
 default_convert_fn = {
-    nn.Conv2D: gen_conv2d_converter(quantize_input=True, fake_bn=False),
+    nn.Conv2D: gen_conv2d_converter(quantize_input=True, fake_bn=True),
     nn.Activation: convert_relu_to_relu6,
-    nn.BatchNorm: None
+    nn.BatchNorm: bypass_bn
 }
 
 

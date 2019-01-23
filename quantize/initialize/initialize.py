@@ -44,7 +44,7 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
             quant_params[conv + "_beta"].initialize(Constant(beta))
             quant_params[conv + "_running_mean"].initialize(Constant(mean))
             quant_params[conv + "_running_var"].initialize(Constant(var))
-        
+
         max = nd.max(weights).asscalar()
         min = nd.min(weights).asscalar()
         quant_params[conv + "_weight_min"].initialize( Constant(min) )

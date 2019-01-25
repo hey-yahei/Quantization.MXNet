@@ -12,7 +12,7 @@ __author__ = "YaHei"
 
 default_convert_fn = {
     nn.Conv2D: gen_conv2d_converter(quantize_input=True, fake_bn=True),
-    nn.Activation: convert_relu_to_relu6,
+    nn.Activation: None, #convert_relu_to_relu6,
     nn.BatchNorm: bypass_bn
 }
 

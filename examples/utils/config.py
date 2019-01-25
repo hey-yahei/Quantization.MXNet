@@ -62,7 +62,8 @@ class TrainConfig(Config):
         super(TrainConfig, self).__init__(logger, *args, **kwargs)
         # create directory if need
         if not os.path.exists(self.checkpoint_dir):
-            logger.info("Create a new directory", self.checkpoint_dir)
+            logger = logging.getLogger(self.__class__.__name__)
+            logger.info("Create a new directory: {}".format(self.checkpoint_dir))
             os.mkdir(self.checkpoint_dir)
 
     def summary(self, trainset, valset):

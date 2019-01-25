@@ -38,7 +38,7 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     net.quantize_input_online()
     net.quantize_input_offline()
     ```
-### Freeze    
+### Freeze(have not tested)    
 To help freeze gluon models to symbol, **FreezeHelper** is provided.     
 1. Construct gluon model without initialization. For example,      
     ```python
@@ -69,7 +69,7 @@ To help freeze gluon models to symbol, **FreezeHelper** is provided.
     mx.model.save_checkpoint("/path/to/save", 0, qsym, qargs, auxes)   # if save the model
     ```
 ## Result    
-I've tested on mobilenet_v1_1.0 and resnet50_v1 with `Adam` optimizer and no augments.    
+I've tested mobilenet_v1_1.0 and resnet50_v1 with `Adam` optimizer and no augments on CIFAR100 dataset.    
         
 | Quantization          | MobileNet_1_0_ReLU | MobileNet_1_0_ReLU6 | ResNet50_v1 | 
 |        :---:          |           :---:    |         :---:       |    :---:    |
@@ -79,12 +79,12 @@ I've tested on mobilenet_v1_1.0 and resnet50_v1 with `Adam` optimizer and no aug
 | UINT8_OFFLINE_RETRAIN | 80.72%             | 83.03%              | /           |
 | UINT8_OFFLINE_FAKEBN  | 80.52%             | 83.00%              | /           |
 
-***Only per-layer quantization is supported now.***     
+***Only per-layer quantization is supported yet.***     
    
-**ONLINE**, **OFFLINE** means activating online or offline.    
-**CALIB** means calibrate quantized parameters of activation with trainset.    
-**RETRAIN** means quantize aware training without fake batchnrom.     
-**FAKEBN** means quantize aware training with fake batchnorm.     
+**ONLINE**, **OFFLINE**: quantize activation online or offline.    
+**CALIB**: calibrate quantized parameters of activation with trainset.    
+**RETRAIN**: quantize aware training but without fake batchnrom.     
+**FAKEBN**: quantize aware training with fake batchnorm.     
 
 ------------------------     
 ***More details refer to 《[MXNet上的重训练量化 | Hey~YaHei!](http://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)》.***

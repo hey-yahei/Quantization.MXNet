@@ -4,9 +4,10 @@ import ctypes
 import json
 import os
 import functools
+import mxnet as mx
 from mxnet import symbol, nd, model
 from mxnet.base import _LIB, check_call
-from mxnet.base import c_array, c_str, mx_uint
+from mxnet.base import c_array, c_str, c_str_array, mx_uint
 from mxnet.base import SymbolHandle
 from mxnet.symbol import Symbol
 
@@ -33,7 +34,7 @@ def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
     """
     assert isinstance(excluded_symbols, list)
     num_excluded_symbols = len(excluded_symbols)
-    exclude = [s.handle for s in excluded_symbols]
+    # exclude = [s.handle for s in excluded_symbols]
 
     assert isinstance(offline_params, list)
     offline = [c_str(k) for k in offline_params]
@@ -43,7 +44,8 @@ def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
     check_call(_LIB.MXQuantizeSymbol(sym.handle,
                                      ctypes.byref(out),
                                      mx_uint(num_excluded_symbols),
-                                     c_array(SymbolHandle, exclude),
+                                     # c_array(SymbolHandle, exclude),
+                                     c_str_array(excluded_symbols),
                                      mx_uint(num_offline),
                                      c_array(ctypes.c_char_p, offline),
                                      c_str(quantized_dtype),
@@ -122,9 +124,9 @@ def quantize_params(qsym, params):
         if name.endswith('_quantize'):
             original_name = name[:-len('_quantize')]
             val, vmin, vmax = nd.contrib.quantize(data=params[original_name],
-                                                       min_range=params[original_name+"_min"],
-                                                       max_range=params[original_name+"_max"],
-                                                       out_type="uint8")
+                                                  min_range=params[original_name+"_min"],
+                                                  max_range=params[original_name+"_max"],
+                                                  out_type="uint8")
             quantized_params[name] = val
             quantized_params[name+'_min'] = vmin
             quantized_params[name+'_max'] = vmax
@@ -134,7 +136,7 @@ def quantize_params(qsym, params):
 
 
 class FreezeHelper(object):
-    def __init__(self, net, params_filename, input_shape, tmp_filename="tmp_origin_net"):
+    def __init__(self, net, params_filename, input_shape):
         """
         A helper for freezing.
         :param net: mxnet.gluon.nn.Block
@@ -143,23 +145,28 @@ class FreezeHelper(object):
             The filename of the trained parameters.
         :param input_shape: tuple
             The shape of input. For example, (1, 3, 224, 224) for MobileNet.
-        :param tmp_filename: str
-            The filename to output as temporary file.
         """
         self.origin_net = net
         self.gluon_params_filename = params_filename
-        self.tmp_filename = tmp_filename
         self.sym, self.args, self.auxes = None, None, None
 
         net.load_parameters(params_filename, ignore_extra=True)
         net.hybridize()
-        _ = net(nd.zeros(shape=input_shape))
-        net.export(self.tmp_filename, 0)
-        self.sym, self.args, self.auxes = model.load_checkpoint(self.tmp_filename, 0)
-
-    def __del__(self):
-        os.remove(self.tmp_filename + "-symbol.json")
-        os.remove(self.tmp_filename + "-0000.params")
+        x = mx.sym.var('data')
+        y = net(x)
+        y = mx.sym.SoftmaxOutput(data=y, name='softmax')
+        self.sym = mx.symbol.load_json(y.tojson()).get_backend_symbol("MKLDNN")
+        self.args = {}
+        self.auxes = {}
+        params = net.collect_params()
+        # print(params)
+        for param in params.values():
+            v = param._reduce()
+            k = param.name
+            if 'running' in k:
+                self.auxes[k] = v
+            else:
+                self.args[k] = v
 
     def list_symbols(self, prefix="", suffix=""):
         return [s for s in self.sym.get_internals() if s.name.startswith(prefix) and s.name.endswith(suffix)]
@@ -202,13 +209,15 @@ class FreezeHelper(object):
         :return:
         """
 
-        exclude = [s for s in self.sym.get_internals() if s.name in excluded_symbol]
+        # exclude = [s for s in self.sym.get_internals() if s.name in excluded_symbol]
         qsym = quantize_symbol(sym=self.sym,
-                               excluded_symbols=exclude,
+                               # excluded_symbols=exclude,
+                               excluded_symbols=excluded_symbol,
                                offline_params=offline_params,
                                quantized_dtype=quantized_dtype,
                                calib_quantize_op=calib_quantize_op,
                                quantize_input_offline=quantize_input_offline)
+        qsym = qsym.get_backend_symbol("MKLDNN_POST_QUANTIZE")
         quantized_params = self._extract_qparams(self.origin_net, self.gluon_params_filename)
         self.args.update(quantized_params)
         qargs = quantize_params(qsym, self.args)

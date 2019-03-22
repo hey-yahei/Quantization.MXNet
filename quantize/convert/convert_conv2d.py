@@ -9,16 +9,49 @@ __all__ = ['gen_conv2d_converter']
 __author__ = "YaHei"
 
 
+# def _quantize_simulate(data, signed, width, one_side=False, min=None, max=None, training=True):
+#     # online
+#     if max is None:
+#         if signed:
+#             max = data.abs().max()
+#             min = -max
+#         else:
+#             max = data.max()
+#             min = data.min()
+#     # get scalar
+#     if type(max) == nd.NDArray:
+#         max_s = max.asscalar()
+#         if not all(not signed, one_side):
+#             min = min_s = 0.
+#         else:
+#             min_s = min.asscalar()
+#     # not training
+#     if not training:
+#         max = max_s
+#         min = min_s
+#     # quantize
+#     scalar = (max - min) / (2 ** width - 1)
+#     if signed:
+#         res = (data.clip(min_s, max_s) / scalar).round() * scalar
+#     else:
+#         res = ((data.clip(min_s, max_s) - min) / scalar).round() * scalar + min
+#     return res
+
+
 def _conv2d_forward(self, F, x, weight, bias=None,
                     weight_min=None, weight_max=None, input_min=None, input_max=None,
                     gamma=None, beta=None, running_mean=None, running_var=None):
     # Quantize input
     if input_min is not None:
-        self.current_input_min = F.min(x).asscalar()
-        self.current_input_max = F.max(x).asscalar()
-        min = input_min.asscalar() if self.quantize_input_offline else self.current_input_min
+        if self.quantize_kwargs['input']['signed']:
+            self.current_input_max = F.max(F.abs(x)).asscalar()
+            self.current_input_min = -self.current_input_max
+        else:
+            self.current_input_max = F.max(x).asscalar()
+            self.current_input_min = F.min(x).asscalar() if not self.quantize_kwargs['input']['one_side'] else 0.
         max = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
-        input_scale = (max - min) / (2 ** 8 - 1)
+        min = input_min.asscalar() if self.quantize_input_offline else self.current_input_min
+        input_scale = (max - min) / (2 ** self.quantize_kwargs['input']['width'] - 1)
         x = F.round((F.clip(x, min, max) - min) / input_scale) * input_scale + min
 
     # Fake bn
@@ -29,7 +62,14 @@ def _conv2d_forward(self, F, x, weight, bias=None,
         bias = gamma * (bias - running_mean) / F.sqrt(running_var + 1e-5) + beta
 
     # Simulate quantization for weight
-    w_scale = (weight_max - weight_min) / (2 ** 8 - 1)
+    if not self.quantize_kwargs['weight']['training']:
+        if self.quantize_kwargs['weight']['signed']:
+            weight_max = F.max(F.abs(weight))
+            weight_min = -weight_max
+        else:
+            weight_max = F.max(weight)
+            weight_min = F.min(weight) if not self.quantize_kwargs['weight']['one_side'] else nd.NDArray([0.])
+    w_scale = (weight_max - weight_min) / (2 ** self.quantize_kwargs['weight']['width'] - 1)
     weight_q = F.round((F.clip(weight, weight_min.asscalar(), weight_max.asscalar()) - weight_min) / w_scale) * w_scale + weight_min
 
     # Normal convolution
@@ -43,27 +83,28 @@ def _conv2d_forward(self, F, x, weight, bias=None,
     return act
 
 
-def _add_quantize_weight_params(m):
+def _add_quantize_weight_params(m, one_side=False):
     m.weight_min = m.params.get('weight_min',
                                 shape=(1,), init="zeros",
-                                allow_deferred_init=True)
+                                allow_deferred_init=True) if not one_side else None
     m.weight_max = m.params.get('weight_max',
                                 shape=(1,), init="ones",
                                 allow_deferred_init=True)
 
 
-def _add_quantize_input_params(m):
+def _add_quantize_input_params(m, one_side=True):
     m.quantize_input_offline = False
-    m.current_input_min = 0.
+    m.current_input_min = 0. if not one_side else None
     m.current_input_max = 0.
     m.input_min = m.params.get("input_min",
                                shape=(1,), init="zeros",
                                allow_deferred_init=True,
-                               differentiable=False)
+                               differentiable=False) if not one_side else None
     m.input_max = m.params.get("input_max",
                                shape=(1,), init="zeros",
                                allow_deferred_init=True,
                                differentiable=False)
+
 
 def _add_fake_bn_params(m):
     in_channels = m._kwargs['num_filter']
@@ -106,14 +147,30 @@ def _add_fake_bn_ema_hook(m):
     m.register_forward_pre_hook(_ema_hook)
 
 
-def gen_conv2d_converter(quantize_input=True, fake_bn=True):
+def gen_conv2d_converter(quantize_input=True, fake_bn=False,
+                         weight_signed=True, weight_width=8, weight_one_side=False, weight_training=True,
+                         input_signed=False, input_width=8, input_one_side=False):
     def _converter(m):
         assert isinstance(m, Conv2D)
-        _add_quantize_weight_params(m)
+        if weight_training:
+            _add_quantize_weight_params(m, weight_one_side)
         if quantize_input:
-            _add_quantize_input_params(m)
+            _add_quantize_input_params(m, input_one_side)
         if fake_bn:
             _add_fake_bn_params(m)
             _add_fake_bn_ema_hook(m)
         m.hybrid_forward = types.MethodType(_conv2d_forward, m)
+        m.quantize_kwargs = {
+            "input": {
+                "signed": input_signed,
+                "width": input_width,
+                "one_side": input_one_side
+            },
+            "weight": {
+                "signed": weight_signed,
+                "width": weight_width,
+                "one_side": weight_one_side,
+                "training": weight_training
+            }
+        }
     return _converter

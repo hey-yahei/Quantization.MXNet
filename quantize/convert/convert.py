@@ -7,13 +7,13 @@ from .convert_conv2d import gen_conv2d_converter
 from .convert_act import convert_relu_to_relu6
 from .convert_bn import bypass_bn
 
-__all__ = ["convert_model", "convert_to_relu6"]
+__all__ = ["convert_model", "convert_to_relu6", 'default_convert_fn']
 __author__ = "YaHei"
 
 default_convert_fn = {
-    nn.Conv2D: gen_conv2d_converter(quantize_input=True, fake_bn=True),
-    nn.Activation: None, #convert_relu_to_relu6,
-    nn.BatchNorm: bypass_bn
+    nn.Conv2D: gen_conv2d_converter(),
+    nn.Activation: convert_relu_to_relu6,
+    nn.BatchNorm: None
 }
 
 
@@ -64,8 +64,6 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
             qconv.quantize_input_offline = False
     net.quantize_input_offline = types.MethodType(_quantize_input_offline, net)
     net.quantize_input_online = types.MethodType(_quantize_input_online, net)
-
-    return net
 
 
 def convert_to_relu6(net, exclude=[]):

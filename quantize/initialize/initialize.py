@@ -17,8 +17,8 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
     conv_params = net.collect_params(".*conv.*")
     bn_params = net.collect_params(".*batchnorm.*")
     conv_prefix = [pname[:-len("_weight")] for pname in conv_params if pname.endswith("_weight")]
-    weight_params = [pname[:-len("_weight_min")] for pname in conv_params if pname.endswith("_weight_min")]
-    input_params = [pname[:-len("_input_min")] for pname in conv_params if pname.endswith("_input_min")]
+    weight_params = [pname[:-len("_weight_max")] for pname in conv_params if pname.endswith("_weight_max")]
+    input_params = [pname[:-len("_input_max")] for pname in conv_params if pname.endswith("_input_max")]
     fakeconv_params = [pname[:-len("_gamma")] for pname in conv_params if pname.endswith("_gamma") and conv_name in pname]
     for conv in conv_prefix:
         weights = conv_params[conv + "_weight"].data()
@@ -50,10 +50,12 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
         if conv in weight_params:
             max = nd.max(weights).asscalar()
             min = nd.min(weights).asscalar()
-            conv_params[conv + "_weight_min"].initialize( Constant(min) )
+            if (conv + "_weight_min") in conv_params:
+                conv_params[conv + "_weight_min"].initialize( Constant(min) )
             conv_params[conv + "_weight_max"].initialize( Constant(max) )
 
         if conv in input_params:
-            conv_params[conv + "_input_min"].initialize( Constant(0) )
+            if (conv + "_input_min") in conv_params:
+                conv_params[conv + "_input_min"].initialize( Constant(0) )
             conv_params[conv + "_input_max"].initialize( Constant(0) )
 

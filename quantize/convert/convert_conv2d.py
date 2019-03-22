@@ -68,9 +68,13 @@ def _conv2d_forward(self, F, x, weight, bias=None,
             weight_min = -weight_max
         else:
             weight_max = F.max(weight)
-            weight_min = F.min(weight) if not self.quantize_kwargs['weight']['one_side'] else nd.NDArray([0.])
-    w_scale = (weight_max - weight_min) / (2 ** self.quantize_kwargs['weight']['width'] - 1)
-    weight_q = F.round((F.clip(weight, weight_min.asscalar(), weight_max.asscalar()) - weight_min) / w_scale) * w_scale + weight_min
+            weight_min = F.min(weight) if not self.quantize_kwargs['weight']['one_side'] else nd.array([0.])
+    if self.quantize_kwargs['weight']['signed']:
+        w_scale = weight_max / (2 ** (self.quantize_kwargs['weight']['width'] - 1) - 1)
+        weight_q = F.round(F.clip(weight, weight_min.asscalar(), weight_max.asscalar()) / w_scale) * w_scale
+    else:
+        w_scale = (weight_max - weight_min) / (2 ** self.quantize_kwargs['weight']['width'] - 1)
+        weight_q = F.round((F.clip(weight, weight_min.asscalar(), weight_max.asscalar()) - weight_min) / w_scale) * w_scale + weight_min
 
     # Normal convolution
     if bias is None:

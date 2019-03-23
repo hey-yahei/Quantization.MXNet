@@ -160,7 +160,7 @@ def _add_fake_bn_ema_hook(m):
 
 def gen_conv2d_converter(quantize_input=True, fake_bn=False,
                          weight_signed=True, weight_width=8, weight_one_side=False, weight_training=True,
-                         input_signed=False, input_width=8, input_one_side=False):
+                         input_signed=False, input_width=8, input_one_side=True):
     def _converter(m):
         assert isinstance(m, Conv2D)
         if weight_training:

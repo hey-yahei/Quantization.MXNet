@@ -199,7 +199,7 @@ if __name__ == "__main__":
         nn.BatchNorm: convert.bypass_bn if opt.fake_bn else None
     }
     exclude_blocks = []
-    if opt.exclude_first_conv:
+    if opt.exclude_first_conv == 'true':
         exclude_blocks.append(net.features[0])
     print('*'*25 + ' Exclude blocks ' + '*'*25)
     for b in exclude_blocks:

@@ -49,9 +49,11 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
         for qconv in self.quantized_convs:
             if getattr(qconv, "input_min", None) is not None:
                 qconv.input_min.set_data((1 - momentum) * qconv.current_input_min + momentum * qconv.input_min.data())
+            if getattr(qconv, "input_max", None) is not None:
                 qconv.input_max.set_data((1 - momentum) * qconv.current_input_max + momentum * qconv.input_max.data())
-            if getattr(qconv, "gamma", None) is not None:
+            if getattr(qconv, "running_mean", None) is not None:
                 qconv.running_mean.set_data((1 - momentum) * qconv.current_mean + momentum * qconv.running_mean.data())
+            if getattr(qconv, "running_var", None) is not None:
                 qconv.running_var.set_data((1 - momentum) * qconv.current_var + momentum * qconv.running_var.data())
     net.update_ema = types.MethodType(_update_ema, net)
 

@@ -5,7 +5,7 @@ from mxnet.gluon import nn
 from mxnet.gluon.data import Sampler, DataLoader
 from mxnet.gluon.data.vision import CIFAR10
 from mxnet.gluon.data.vision import transforms as T
-from gluoncv.model_zoo import get_model
+from gluoncv.model_zoo import get_model, get_model_list
 from gluoncv.data import ImageNet
 
 import argparse
@@ -13,8 +13,6 @@ import numpy as np
 from tqdm import tqdm
 import warnings
 
-import sys
-sys.path.append("..")
 from quantize import convert
 from quantize.initialize import qparams_init
 
@@ -22,15 +20,19 @@ __author__ = "YaHei"
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Simulate for quantization.')
-    parser.add_argument('--data-dir', type=str, default='~/.mxnet/datasets/imagenet',
-                        help='training and validation pictures to use.')
-    parser.add_argument('--model', type=str, required=True,
-                        help='type of model to use. see vision_model for options.')
+    # parser.add_argument('--data-dir', type=str, default='~/.mxnet/datasets',
+    #                     help='training and validation pictures to use. (default: ~/.mxnet/datasets)')
+    parser.add_argument('--model', type=str, default=None,
+                        help='type of model to use. see vision_model for options. (required)')
+    parser.add_argument('--print-model', action='store_true',
+                        help='print the architecture of model.')
+    parser.add_argument('--list-models', action='store_true',
+                        help='list all models supported for --model.')
     parser.add_argument('--use-gpu', type=int, default=-1,
-                        help='run model on gpu.')
+                        help='run model on gpu. (default: cpu)')
     parser.add_argument('--dataset', type=str, default="imagenet",
                         choices=['imagenet', 'cifar10'],
-                        help='dataset to evaluate')
+                        help='dataset to evaluate (default: imagenet)')
     parser.add_argument('--use-gn', action='store_true',
                         help='whether to use group norm.')
     parser.add_argument('--batch-norm', action='store_true',
@@ -43,41 +45,56 @@ def parse_args():
                         help='use fake batchnorm or not.')
     parser.add_argument('--weight-dtype', type=str, default="uint",
                         choices=['int', 'uint'],
-                        help='data type to simulate for weights')
+                        help='data type to simulate for weights (default: uint)')
     parser.add_argument('--weight-bits-width', type=int, default=8,
                         help='bits width of weight to quantize into.')
     parser.add_argument('--weight-one-side', type=str, default="false",
                         choices=['false', 'true'],
-                        help='quantize weights as one-side uint or not.')
+                        help='quantize weights as one-side uint or not. (default: false)')
     # parser.add_argument('--weight-quantize-via-train', action='store_true',
     #                     help='regard weight ranges as parameters to train.')
     parser.add_argument('--input-dtype', type=str, default="uint",
                         choices=['float', 'int', 'uint'],
-                        help='data type to simulate for inputs.')
+                        help='data type to simulate for inputs. (default: uint)')
     parser.add_argument('--input-bits-width', type=int, default=8,
                         help='bits width of input to quantize into.')
     parser.add_argument('--input-one-side', type=str, default="true",
                         choices=['false', 'true'],
-                        help='quantize inputs as one-side uint or not.')
+                        help='quantize inputs as one-side uint or not. (default: true)')
     parser.add_argument('-j', '--num-data-workers', dest='num_workers', default=4, type=int,
-                        help='number of preprocessing workers')
+                        help='number of preprocessing workers (default: 4)')
     parser.add_argument('--batch-size', type=int, default=128,
-                        help='evaluate batch size per device (CPU/GPU).')
+                        help='evaluate batch size per device (CPU/GPU). (default: 128)')
     parser.add_argument('--num-sample', type=int, default=10,
-                        help='number of samples for every class in trainset.')
+                        help='number of samples for every class in trainset. (default: 10)')
     parser.add_argument('--quantize-input-offline', action='store_true',
                         help='calibrate via EMA on trainset and quantize input offline.')
     parser.add_argument('--calib-epoch', type=int, default=3,
-                        help='number of epoches to calibrate via EMA on trainset.')
+                        help='number of epoches to calibrate via EMA on trainset. (default: 3)')
     parser.add_argument('--show-warning', action='store_true',
-                        help='show warning.')
+                        help='show warning messages.')
     parser.add_argument('--disable-cudnn-autotune', action='store_true',
                         help='disable mxnet cudnn autotune to find the best convolution algorithm.')
     parser.add_argument('--eval-per-calib', action='store_true',
-                        help='evaluate once after every clibration.')
-
-
+                        help='evaluate once after every calibration.')
+    parser.add_argument('--exclude-first-conv', type=str, default="true",
+                        choices=['false', 'true'],
+                        help='exclude first convolution layer when quantize. (default: true)')
     opt = parser.parse_args()
+
+    if opt.list_models:
+        for key in get_model_list():
+            print(key)
+        exit(0)
+    elif opt.model is None:
+        print("error: --model is required")
+
+    print()
+    print('*'*25 + ' Setting ' + '*'*25)
+    for k, v in opt.__dict__.items():
+        print("{0: <25}: {1}".format(k, v))
+    print('*'*(25*2+len(' Setting ')))
+    print()
     return opt
 
 def evaluate(net, num_class, dataloader, ctx, update_ema=False, tqdm_desc="Eval"):
@@ -138,7 +155,6 @@ if __name__ == "__main__":
     # show warning
     if not opt.show_warning:
         warnings.filterwarnings("ignore")
-    # disable autotune
     if opt.disable_cudnn_autotune:
         import os
         os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
@@ -160,6 +176,11 @@ if __name__ == "__main__":
     if opt.last_gamma:
         kwargs['last_gamma'] = True
     net = get_model(model_name, **kwargs)
+    if opt.print_model:
+        print('*'*25 + ' ' + opt.model + ' ' + '*'*25)
+        print(net)
+        print('*'*(25*2 + 2 + len(opt.model)))
+        print()
 
     # convert model to quantization version
     conv_kwargs = {
@@ -177,7 +198,15 @@ if __name__ == "__main__":
         nn.Conv2D: convert.gen_conv2d_converter(**conv_kwargs),
         nn.BatchNorm: convert.bypass_bn if opt.fake_bn else None
     }
-    convert.convert_model(net, convert_fn=convert_fn)
+    exclude_blocks = []
+    if opt.exclude_first_conv:
+        exclude_blocks.append(net.features[0])
+    print('*'*25 + ' Exclude blocks ' + '*'*25)
+    for b in exclude_blocks:
+        print(b.name)
+    print('*'*(25*2 + len(' Exclude blocks ')))
+    print()
+    convert.convert_model(net, exclude=exclude_blocks, convert_fn=convert_fn)
 
     # initialize for quantization parameters and reset context
     qparams_init(net)
@@ -209,7 +238,10 @@ if __name__ == "__main__":
     )
     if opt.quantize_input_offline:
         train_dataset = dataset(train=True).transform_first(eval_transformer)
-        train_labels = [item[1] for item in train_dataset._data.items]
+        if opt.dataset == 'imagenet':
+            train_labels = [item[1] for item in train_dataset._data.items]
+        elif opt.dataset == 'cifar10':
+            train_labels = train_dataset._data._label
         train_loader = DataLoader(
             dataset=train_dataset,
             batch_size=opt.batch_size,
@@ -221,13 +253,30 @@ if __name__ == "__main__":
     # calibrate for input ranges and evaluate for simulation
     if opt.quantize_input_offline:
         for i in range(opt.calib_epoch):
+            net.quantize_input_online()
             _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
                          tqdm_desc="Calib[{}/{}]".format(i+1, opt.calib_epoch))
             if opt.eval_per_calib:
                 net.quantize_input_offline()
-                print(evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False,
-                               tqdm_desc="Eval[{}/{}]".format(i + 1, opt.calib_epoch)))
-                net.quantize_input_online()
-    if not opt.eval_per_calib:
-        net.quantize_input_offline()
-        print(evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False))
+                acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False,
+                                        tqdm_desc="Eval[{}/{}]".format(i + 1, opt.calib_epoch))
+                print('*' * 25 + ' Calibration {:0>2} '.format(i+1) + '*' * 25)
+                print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
+                print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
+                print('*' * (25 * 2 + len(' Calibration 00 ')))
+        if not opt.eval_per_calib:
+            net.quantize_input_offline()
+            acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
+            print()
+            print('*' * 25 + ' Result ' + '*' * 25)
+            print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
+            print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
+            print('*' * (25 * 2 + len(' Result ')))
+    else:
+        net.quantize_input_online()
+        acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
+        print()
+        print('*'*25 + ' Result ' + '*'*25)
+        print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
+        print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
+        print('*'*(25*2 + len(' Result ')))

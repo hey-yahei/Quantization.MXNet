@@ -42,7 +42,7 @@ def _conv2d_forward(self, F, x, weight, bias=None,
                     weight_min=None, weight_max=None, input_min=None, input_max=None,
                     gamma=None, beta=None, running_mean=None, running_var=None):
     # Quantize input
-    if input_min is not None:
+    if input_max is not None:
         if self.quantize_kwargs['input']['signed']:
             self.current_input_max = F.max(F.abs(x)).asscalar()
             self.current_input_min = -self.current_input_max
@@ -50,9 +50,16 @@ def _conv2d_forward(self, F, x, weight, bias=None,
             self.current_input_max = F.max(x).asscalar()
             self.current_input_min = F.min(x).asscalar() if not self.quantize_kwargs['input']['one_side'] else 0.
         max = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
-        min = input_min.asscalar() if self.quantize_input_offline else self.current_input_min
-        input_scale = (max - min) / (2 ** self.quantize_kwargs['input']['width'] - 1)
-        x = F.round((F.clip(x, min, max) - min) / input_scale) * input_scale + min
+        if not self.quantize_kwargs['input']['signed'] and self.quantize_kwargs['input']['one_side']:
+            min = 0.
+        else:
+            min = input_min.asscalar() if self.quantize_input_offline else self.current_input_min
+        if self.quantize_kwargs['input']['signed']:
+            input_scale = max / (2 ** (self.quantize_kwargs['input']['width'] - 1) - 1)
+            x = F.round((F.clip(x, min, max)) / input_scale) * input_scale
+        else:
+            input_scale = (max - min) / (2 ** self.quantize_kwargs['input']['width'] - 1)
+            x = F.round((F.clip(x, min, max) - min) / input_scale) * input_scale + min
 
     # Fake bn
     if gamma is not None:
@@ -157,9 +164,9 @@ def gen_conv2d_converter(quantize_input=True, fake_bn=False,
     def _converter(m):
         assert isinstance(m, Conv2D)
         if weight_training:
-            _add_quantize_weight_params(m, weight_one_side)
+            _add_quantize_weight_params(m, weight_one_side and not weight_signed)
         if quantize_input:
-            _add_quantize_input_params(m, input_one_side)
+            _add_quantize_input_params(m, input_one_side and not input_signed)
         if fake_bn:
             _add_fake_bn_params(m)
             _add_fake_bn_ema_hook(m)

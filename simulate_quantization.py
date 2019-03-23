@@ -90,7 +90,7 @@ def parse_args():
         print("error: --model is required")
 
     print()
-    print('*'*25 + ' Setting ' + '*'*25)
+    print('*'*25 + ' Settings ' + '*'*25)
     for k, v in opt.__dict__.items():
         print("{0: <25}: {1}".format(k, v))
     print('*'*(25*2+len(' Setting ')))
@@ -201,6 +201,8 @@ if __name__ == "__main__":
     exclude_blocks = []
     if opt.exclude_first_conv == 'true':
         exclude_blocks.append(net.features[0])
+    if model_name.startswith('mobilenetv2_'):
+        exclude_blocks.append(net.output[0])
     print('*'*25 + ' Exclude blocks ' + '*'*25)
     for b in exclude_blocks:
         print(b.name)

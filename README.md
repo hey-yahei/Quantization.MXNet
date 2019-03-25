@@ -3,7 +3,7 @@ Quantization is one of popular compression algorithms in deep learning now. More
 support quantization, but as we know, it is troublesome that they usually adopt different strategies to quantize.    
     
 Here is a tool to help developers simulate quantization with various strategies(signed or unsigned, bits width, 
-one-side distribution or not, etc). What's more, quantization aware train is also provided which will help you recover 
+one-side distribution or not, etc). What's more, quantization aware train is also provided, which will help you recover 
 performance of quantized models, especially for efficient ones like MobileNet.
 
 ## Simulate quantization     
@@ -11,7 +11,7 @@ A tool is provided to simulate quantization for CNN models.
 
 ### Usage
 For example, simulate quantization for mobilnet1.0,          
-```python
+```bash
 python simulate_quantization.py --model=mobilnet1.0
 ```
 * Only **per-layer** quantization is supported yet.
@@ -115,7 +115,7 @@ weight-quantization.
 * When quantize inputs offline, the range of input is calibrated thrice on subset of trainset, which contains 10000 
 images(10 per class).
 
-## Quantize Aware Training
+## Quantize Aware Train
 Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) with the implement of MXNet.
 ### Usage    
 1. Construct your gluon model. For example,     

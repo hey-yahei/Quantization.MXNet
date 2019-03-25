@@ -89,6 +89,19 @@ class Conv2D(nn.HybridBlock):
         # Concat feature maps of every group
         return F.concat(*y, dim=1)
 
-
-
-
+    def __repr__(self):
+        s = '{name}({mapping}, kernel_size={kernel_size}, stride={strides}'
+        len_kernel_size = len(self._kwargs['kernel_size'])
+        if self._padding != (0,) * len_kernel_size:
+            s += ', padding={padding}'
+        if self._groups != 1:
+            s += ', groups={}'.format(self._groups)
+        if self.bias is None:
+            s += ', bias=False'
+        if self.act:
+            s += ', {}'.format(self.act)
+        s += ')'
+        shape = self.weight.shape
+        return s.format(name=self.__class__.__name__,
+                        mapping='{0} -> {1}'.format(shape[1] if shape[1] else None, shape[0]),
+                        **self._kwargs)

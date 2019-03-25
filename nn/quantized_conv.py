@@ -69,10 +69,6 @@ class Conv2D(nn.HybridBlock):
             self._kernel_size = _int2tuple(kernel_size)
             self._strides = _int2tuple(strides)
             self._padding = _int2tuple(padding)
-            self._kwargs = {
-                'kernel_size': self._kernel_size,
-                'strides': self._strides
-            }
             self._quantized = quantized
             self._input_dtype = input_dtype
             self._weight_dtype = weight_dtype
@@ -95,10 +91,12 @@ class Conv2D(nn.HybridBlock):
                 inputs, in_scale = quantize(F, inputs, self._input_dtype)
             else:
                 inputs, in_scale = _quantize(F, inputs, *self._input_range)
+
             if self._weight_range is None:
                 weight, w_scale = quantize(F, weight, self._weight_dtype)
             else:
                 weight, w_scale = _quantize(F, weight, *self._weight_range)
+
             if bias is not None:
                 b_scale = in_scale * w_scale
                 b_max = in_scale * w_scale * (2 ** 31)
@@ -113,7 +111,7 @@ class Conv2D(nn.HybridBlock):
         y = []
         for x, w, b in zip(inputs, weight, bias):
             # im2col
-            x, out_h, out_w = _im2col_2D(F, x, **self._kwargs)  # batch_size x (out_height * out_width) x (kh * kw * in_channels)
+            x, out_h, out_w = _im2col_2D(F, x, self._kernel_size, self._strides)  # batch_size x (out_height * out_width) x (kh * kw * in_channels)
             # Transport weight to matrix
             w = w.reshape((w.shape[0], -1))    # channels x (kh * kw * in_channels)
             # Do convolution operation(note that F.dot only support float32)
@@ -139,10 +137,10 @@ class Conv2D(nn.HybridBlock):
         return y
 
     def __repr__(self):
-        s = '{name}({mapping}, kernel_size={kernel_size}, stride={strides}'
-        len_kernel_size = len(self._kwargs['kernel_size'])
+        s = '{name}({mapping}, kernel_size={}, stride={}'.format(self._kernel_size, self._strides)
+        len_kernel_size = len(self._kernel_size)
         if self._padding != (0,) * len_kernel_size:
-            s += ', padding={padding}'
+            s += ', padding={}'.format(self._padding)
         if self._groups != 1:
             s += ', groups={}'.format(self._groups)
         if self.bias is None:
@@ -152,5 +150,4 @@ class Conv2D(nn.HybridBlock):
         s += ')'
         shape = self.weight.shape
         return s.format(name=self.__class__.__name__,
-                        mapping='{0} -> {1}'.format(shape[1] if shape[1] else None, shape[0]),
-                        **self._kwargs)
+                        mapping='{0} -> {1}'.format(shape[1] if shape[1] else None, shape[0]))

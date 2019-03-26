@@ -31,8 +31,9 @@ def _merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
 
     bn_names = [c.name.replace(conv_name, bn_name) for c in conv_lst]
     for conv, bn in zip(conv_lst, bn_names):
-        params = net.collect_params(bn)
+        params = net.collect_params(bn + "_")
         if len(params.keys()) != 0 and conv not in exclude:
+            print("Merge {} to {}".format(bn, conv.name))
             gamma = params[bn + "_gamma"].data()
             beta = params[bn + "_beta"].data()
             mean = params[bn + "_running_mean"].data()
@@ -69,4 +70,3 @@ def merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
     """
     _merge_bn(net, conv_name, bn_name, exclude)
     _bypass_bn(net, exclude)
-    return net

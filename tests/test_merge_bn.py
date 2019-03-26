@@ -6,7 +6,8 @@ sys.path.append("..")
 import time
 
 from mxnet import nd
-from mxnet.gluon.model_zoo.vision import mobilenet1_0
+# from mxnet.gluon.model_zoo.vision import mobilenet1_0
+from gluoncv.model_zoo import mobilenet1_0
 
 from quantize.convert import convert_model
 from quantize.initialize import qparams_init as qinit
@@ -18,22 +19,14 @@ def test_check_output():
     print("<<TEST: Check whether output is right>>")
     inputs = nd.uniform(shape=(1,3,224,224))
 
-    net = mobilenet1_0(pretrained=True)
-    conv = net.features[0]
-    bn = net.features[1]
-    origin_output = bn( conv(inputs) )
+    ref_net = mobilenet1_0(pretrained=True)
+    my_net = mobilenet1_0(pretrained=True)
+    merge_bn(my_net)
 
-    merge_bn(net)
-    new_output = conv(inputs)
+    ref_output = ref_net(inputs)
+    my_output = my_net(inputs)
 
-    cout = origin_output.shape[1]
-    diff = new_output - origin_output
-    print("Per channel ----")
-    print("Diff max:", diff.reshape(cout, -1).max(axis=1))
-    print("Diff mean:", diff.reshape(cout, -1).mean(axis=1))
-    print("All ----")
-    print("Diff max:", diff.max())
-    print("Diff mean:", diff.mean())
+    print(((my_output - ref_output).abs() / ref_output.abs()).reshape(-1).sort()[-20:])
     print()
 
 
@@ -68,6 +61,6 @@ def test_merge_bn():
 
 
 if __name__ == "__main__":
-    # test_check_output()
+    test_check_output()
     # test_export()
-    test_merge_bn()
+    # test_merge_bn()

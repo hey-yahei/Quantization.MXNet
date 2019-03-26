@@ -21,13 +21,12 @@ def _bypass_bn(net, exclude=[]):
 
 
 def _merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
+    conv_lst = []
     def _collect_conv(m):
-        if not hasattr(_collect_conv, "convs"):
-            _collect_conv.convs = []
         if isinstance(m, nn.Conv2D):
-            _collect_conv.convs.append(m)
+            assert not hasattr(m, "gamma"), "Don't merge bn to a conv with fake bn! ({})".format(m.name)
+            conv_lst.append(m)
     net.apply(_collect_conv)
-    conv_lst = _collect_conv.convs
 
     bn_names = [c.name.replace(conv_name, bn_name) for c in conv_lst]
     for conv, bn in zip(conv_lst, bn_names):

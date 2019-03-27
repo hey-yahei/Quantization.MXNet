@@ -33,15 +33,11 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
     """
     # Convert network
     def _convert(m):
-        if m in exclude:
-            return
-        m_type = type(m)
-        fn = convert_fn.get(m_type)
-        if fn is not None:
-            fn(m)
-            if m_type == nn.Conv2D:
-                net.quantized_convs.append(m)
-    net.quantized_convs = []
+        if m not in exclude:
+            m_type = type(m)
+            fn = convert_fn.get(m_type)
+            if fn is not None:
+                fn(m)
     net.apply(_convert)
 
     # Add method to update ema for `input_min` and `input_max` in convs
@@ -57,12 +53,21 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
                 qconv.running_var.set_data((1 - momentum) * qconv.current_var + momentum * qconv.running_var.data())
     net.update_ema = types.MethodType(_update_ema, net)
 
+    # Add a method to collect all quantized convolution blocks
+    def _collect_quantized_convs(self):
+        convs = []
+        def _collect_convs(m):
+            if isinstance(m, nn.Conv2D) and hasattr(m, 'quantize_kwargs'):
+                convs.append(m)
+        net.apply(_collect_convs)
+        return convs
+    net.collect_quantized_convs = types.MethodType(_collect_quantized_convs, net)
     # Add method to control the mode of input quantization as online or offline
     def _quantize_input_offline(self):
-        for qconv in self.quantized_convs:
+        for qconv in self.collect_quantized_convs():
             qconv.quantize_input_offline = True
     def _quantize_input_online(self):
-        for qconv in self.quantized_convs:
+        for qconv in self.collect_quantized_convs():
             qconv.quantize_input_offline = False
     net.quantize_input_offline = types.MethodType(_quantize_input_offline, net)
     net.quantize_input_online = types.MethodType(_quantize_input_online, net)

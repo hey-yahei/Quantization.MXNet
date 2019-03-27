@@ -71,8 +71,6 @@ def parse_args():
                         help='calibrate via EMA on trainset and quantize input offline.')
     parser.add_argument('--calib-epoch', type=int, default=3,
                         help='number of epoches to calibrate via EMA on trainset. (default: 3)')
-    parser.add_argument('--show-warning', action='store_true',
-                        help='show warning messages.')
     parser.add_argument('--disable-cudnn-autotune', action='store_true',
                         help='disable mxnet cudnn autotune to find the best convolution algorithm.')
     parser.add_argument('--eval-per-calib', action='store_true',
@@ -152,9 +150,6 @@ class UniformSampler(Sampler):
 if __name__ == "__main__":
     opt = parse_args()
 
-    # show warning
-    if not opt.show_warning:
-        warnings.filterwarnings("ignore")
     if opt.disable_cudnn_autotune:
         import os
         os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
@@ -176,6 +171,8 @@ if __name__ == "__main__":
     if opt.last_gamma:
         kwargs['last_gamma'] = True
     net = get_model(model_name, **kwargs)
+    # from quantize.freeze import merge_bn
+    # merge_bn(net, exclude=[])
     if opt.print_model:
         print('*'*25 + ' ' + opt.model + ' ' + '*'*25)
         print(net)

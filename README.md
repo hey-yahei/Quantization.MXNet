@@ -135,6 +135,7 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     1. Convert **Conv2D**
         1. Quantize inputs into uint8 with one-side distribution.
         2. Quantize weights with simple strategy of max-min into int8.
+        3. Without fake batchnorm.
     2. Do nothing for **BatchNorm** and **Activiation(ReLU)**.
 3. Initialize all quantized parameters.       
     ```python

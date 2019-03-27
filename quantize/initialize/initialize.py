@@ -7,7 +7,7 @@ from mxnet.initializer import Constant
 __all__ = ["qparams_init"]
 
 
-def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
+def qparams_init(net, bn_name="batchnorm"):
     """
     Initialize quantized parameters for convolution op
     :param net: mxnet.gluon.nn.Block
@@ -53,11 +53,9 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
             # bias = gamma * (m.bias.data() - mean) / nd.sqrt(var + 1e-5) + beta
 
         # Initialize for weight_min and weight_max
-        if m.quantize_kwargs['weight']['training']:
+        if hasattr(m, 'quantize_kwargs') and m.quantize_kwargs['weight']['training']:
             if m.quantize_kwargs['weight']['signed']:
-                weight_flt = weight.reshape(-1)
-                max = weight_flt.abs().sort()[int(weight_flt.shape[0] * 0.99)]
-                # max = weight.abs().max()
+                max = weight.abs().max()
                 min = -max
             elif m.quantize_kwargs['weight']['one_side']:
                 max = weight.max()
@@ -66,7 +64,6 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
                 max = weight.max()
                 min = weight.min()
             m.weight_max.initialize(Constant(max))
-            print(m.name, "weight_max", max.asscalar())
             if min is not None:
                 m.weight_min.initialize(Constant(min))
 

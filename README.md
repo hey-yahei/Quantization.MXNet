@@ -12,32 +12,30 @@ A tool is provided to simulate quantization for CNN models.
 ### Usage
 For example, simulate quantization for mobilnet1.0,          
 ```bash
+cd examples
 python simulate_quantization.py --model=mobilnet1.0
 ```
-* Only **per-layer** quantization is supported yet.
+* **Per-layer**, **per-group** and **per-channel** quantizations are supported now.
 * Only **min-max linear** range is supported yet.         
-* You can specify **bit-width**, **sign or not**, **one-side-distribution or not**  for input-quantization and 
-weight-quantization.
+* You can specify **bit-width** for input-quantization and weight-quantization.
 * Quantize input **online** and **offline** are both supported.
 * Only calibrate via update EMA for input_min and input_max on subset of trainset for input offline-quantization.
 * All pretrained models are provided by gluon-cv.
 * More usages see the help message. 
     ```bash
-    (base) yahei@Server2:~/tmp/RT_Quantization.MXNet$ python simulate_quantization.py -h
+    (base) yahei@Server3:~/tmp/Quantization.MXNet/examples$ python simulate_quantization.py -h
     usage: simulate_quantization.py [-h] [--model MODEL] [--print-model]
                                     [--list-models] [--use-gpu USE_GPU]
                                     [--dataset {imagenet,cifar10}] [--use-gn]
                                     [--batch-norm] [--use-se] [--last-gamma]
-                                    [--fake-bn] [--weight-dtype {int,uint}]
+                                    [--fake-bn]
                                     [--weight-bits-width WEIGHT_BITS_WIDTH]
-                                    [--weight-one-side {false,true}]
-                                    [--input-dtype {float,int,uint}]
                                     [--input-bits-width INPUT_BITS_WIDTH]
-                                    [--input-one-side {false,true}]
+                                    [--quant-type {layer,group,channel}]
                                     [-j NUM_WORKERS] [--batch-size BATCH_SIZE]
                                     [--num-sample NUM_SAMPLE]
                                     [--quantize-input-offline]
-                                    [--calib-epoch CALIB_EPOCH] [--show-warning]
+                                    [--calib-epoch CALIB_EPOCH]
                                     [--disable-cudnn-autotune] [--eval-per-calib]
                                     [--exclude-first-conv {false,true}]
     
@@ -59,20 +57,13 @@ weight-quantization.
       --last-gamma          whether to init gamma of the last BN layer in each
                             bottleneck to 0.
       --fake-bn             use fake batchnorm or not.
-      --weight-dtype {int,uint}
-                            data type to simulate for weights (default: uint)
       --weight-bits-width WEIGHT_BITS_WIDTH
                             bits width of weight to quantize into.
-      --weight-one-side {false,true}
-                            quantize weights as one-side uint or not. (default:
-                            false)
-      --input-dtype {float,int,uint}
-                            data type to simulate for inputs. (default: uint)
       --input-bits-width INPUT_BITS_WIDTH
                             bits width of input to quantize into.
-      --input-one-side {false,true}
-                            quantize inputs as one-side uint or not. (default:
-                            true)
+      --quant-type {layer,group,channel}
+                            quantize weights on layer/group/channel. (default:
+                            layer)
       -j NUM_WORKERS, --num-data-workers NUM_WORKERS
                             number of preprocessing workers (default: 4)
       --batch-size BATCH_SIZE
@@ -87,7 +78,6 @@ weight-quantization.
       --calib-epoch CALIB_EPOCH
                             number of epoches to calibrate via EMA on trainset.
                             (default: 3)
-      --show-warning        show warning messages.
       --disable-cudnn-autotune
                             disable mxnet cudnn autotune to find the best
                             convolution algorithm.
@@ -98,22 +88,25 @@ weight-quantization.
     ```    
 
 ### Results      
-| IN dtype | IN one-side | IN online/OFFLINE | W dtype | W one-side | exclude 1st conv | M-Top1 Acc | R-Top1 Acc |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|float32|/|/|float32|/|/|73.28%|74.37%|
-|uint8|✔|online|uint8|✖|✔|72.00%|74.31%|
-|uint8|✔|online|uint8|✖|✖|46.92%|52.87%|
-|uint8|✔|online|int8|/|✔|70.96%|74.22%|
-|uint8|✔|online|int8|/|✖|44.44%|58.67%|
-|uint8|✔|OFFLINE|uint8|✖|✔|72.01%|74.22%|
-|uint8|✔|OFFLINE|int8|/|✔|70.82%|74.26%|
+| IN dtype | IN offline | WT dtype | WT qtype | w/o 1st conv | M-Top1 Acc | R-Top1 Acc |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| float32 | / | float32 | / | / | 73.28% | 77.36% |
+| uint8 |   | int8 | layer | √ | 70.85% | 77.02% |
+| uint8 |   | int8 | layer |   | 44.44% | 55.90% |
+| uint8 | √ | int8 | layer | √ | 70.82% | 77.02% |
+| uint8 |   | int8 | group | √ | 71.20% | 77.02% |
+| uint8 |   | int8 | group |   | 45.18% | 55.90% |
+| uint8 | √ | int8 | group | √ | 71.34% | 77.02% |
+| uint8 |   | int8 | channel | √ | 72.98% | 77.29% |
+| uint8 |   | int8 | channel |   | 47.89% | 56.26% |
+| uint8 | √ | int8 | channel | √ | 72.89% | 77.33% |
 
-* **IN**: INput, **W**: Weight
-* **M-Top1 Acc**: Top-1 Acc of MobileNetv1-1.0, **R-Top1 Acc**: Top-1 Acc of ResNet34-v1
-* Inputs is usually quantized into unsigned inter one-side distribution since outputs of ReLU >= 0.
-* Quantize weights into one-side distribution is not appropriate.
+* **IN**: INput, **WT**: WeighT
+* **M-Top1 Acc**: Top-1 Acc of MobileNetv1-1.0, **R-Top1 Acc**: Top-1 Acc of ResNet50-v1
+* Inputs is usually quantized into unsigned int with one-side distribution since outputs of ReLU >= 0.
 * When quantize inputs offline, the range of input is calibrated thrice on subset of trainset, which contains 10000 
-images(10 per class).
+images(10 per class).    
+* Per-group quantization is the same as per-layer quantization for ResNet because num_groups of all Convolutions are 1.
 
 ## Quantize Aware Train
 Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) with the implement of MXNet.

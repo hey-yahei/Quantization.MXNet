@@ -13,6 +13,8 @@ import numpy as np
 from tqdm import tqdm
 import warnings
 
+import sys
+sys.path.append("..")
 from quantize import convert
 from quantize.initialize import qparams_init
 
@@ -43,24 +45,13 @@ def parse_args():
                         help='whether to init gamma of the last BN layer in each bottleneck to 0.')
     parser.add_argument('--fake-bn', action='store_true',
                         help='use fake batchnorm or not.')
-    parser.add_argument('--weight-dtype', type=str, default="uint",
-                        choices=['int', 'uint'],
-                        help='data type to simulate for weights (default: uint)')
     parser.add_argument('--weight-bits-width', type=int, default=8,
                         help='bits width of weight to quantize into.')
-    parser.add_argument('--weight-one-side', type=str, default="false",
-                        choices=['false', 'true'],
-                        help='quantize weights as one-side uint or not. (default: false)')
-    # parser.add_argument('--weight-quantize-via-train', action='store_true',
-    #                     help='regard weight ranges as parameters to train.')
-    parser.add_argument('--input-dtype', type=str, default="uint",
-                        choices=['float', 'int', 'uint'],
-                        help='data type to simulate for inputs. (default: uint)')
     parser.add_argument('--input-bits-width', type=int, default=8,
                         help='bits width of input to quantize into.')
-    parser.add_argument('--input-one-side', type=str, default="true",
-                        choices=['false', 'true'],
-                        help='quantize inputs as one-side uint or not. (default: true)')
+    parser.add_argument('--quant-type', type=str, default="layer",
+                        choices=['layer', 'group', 'channel'],
+                        help='quantize weights on layer/group/channel. (default: layer)')
     parser.add_argument('-j', '--num-data-workers', dest='num_workers', default=4, type=int,
                         help='number of preprocessing workers (default: 4)')
     parser.add_argument('--batch-size', type=int, default=128,
@@ -181,15 +172,11 @@ if __name__ == "__main__":
 
     # convert model to quantization version
     conv_kwargs = {
-        'quantize_input': opt.input_dtype != 'float',
+        'quantize_input': True,
         'fake_bn': opt.fake_bn,
-        'weight_signed': opt.weight_dtype == 'int',
         'weight_width': opt.weight_bits_width,
-        'weight_one_side': opt.weight_one_side == 'true',
-        'weight_training': False,
-        'input_signed': opt.input_dtype == 'int',
         'input_width': opt.input_bits_width,
-        'input_one_side': opt.input_one_side == 'true'
+        'quant_type': opt.quant_type
     }
     convert_fn = {
         nn.Conv2D: convert.gen_conv2d_converter(**conv_kwargs),

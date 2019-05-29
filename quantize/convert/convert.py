@@ -42,9 +42,7 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
 
     # Add method to update ema for `input_min` and `input_max` in convs
     def _update_ema(self, momentum=0.99):
-        for qconv in self.quantized_convs:
-            if getattr(qconv, "input_min", None) is not None:
-                qconv.input_min.set_data((1 - momentum) * qconv.current_input_min + momentum * qconv.input_min.data())
+        for qconv in self.collect_quantized_convs():
             if getattr(qconv, "input_max", None) is not None:
                 qconv.input_max.set_data((1 - momentum) * qconv.current_input_max + momentum * qconv.input_max.data())
             if getattr(qconv, "running_mean", None) is not None:
@@ -57,11 +55,12 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
     def _collect_quantized_convs(self):
         convs = []
         def _collect_convs(m):
-            if isinstance(m, nn.Conv2D) and hasattr(m, 'quantize_kwargs'):
+            if isinstance(m, nn.Conv2D) and hasattr(m, 'quantize_args'):
                 convs.append(m)
         net.apply(_collect_convs)
         return convs
     net.collect_quantized_convs = types.MethodType(_collect_quantized_convs, net)
+
     # Add method to control the mode of input quantization as online or offline
     def _quantize_input_offline(self):
         for qconv in self.collect_quantized_convs():

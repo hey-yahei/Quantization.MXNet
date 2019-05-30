@@ -189,21 +189,21 @@ To help freeze gluon models to symbol, **FreezeHelper** is provided.
 -->   
  
 ### Results    
-I've tested mobilenet_v1_1.0 and resnet50_v1 with `Adam` optimizer and no augments on CIFAR100 dataset.    
+I've tested mobilenet_v1_1.0 with `Adam` optimizer and no augments on ImageNet(ILSVRC2012) dataset.    
         
-| Quantization          | MobileNet_1_0_ReLU | MobileNet_1_0_ReLU6 | ResNet50_v1 | 
-|        :---:          |           :---:    |         :---:       |    :---:    |
-| FP32                  | 83.45%             | 84.20%              | 89.35%      |
-| UINT8_ONLINE          | 76.61%             | 77.66%              | 89.11%      |
-| UINT8_OFFLINE_CALIB   | 72.10%             | 77.44%              | 88.96%      |
-| UINT8_OFFLINE_RETRAIN | 80.72%             | 83.03%              | /           |
-| UINT8_OFFLINE_FAKEBN  | 80.52%             | 83.00%              | /           |
+| DataType   | QuantType | Offline | Retrain | FakeBN | Top-1 Acc |
+| :---:      | :---:     | :---:   | :---:   | :---:  | :---:     |
+| float32    | / | / | / | / | 73.28% |
+| int8/uint8 | layer |   |   |   | 70.85% |
+| int8/uint8 | layer |   | √ |   | 73.01% |
+| int8/uint8 | layer | √ |   |   | 70.90% |
+| int8/uint8 | layer | √ | √ |   | 73.04% |
 
-***Only per-layer quantization is supported yet.***     
+* Only per-layer quantization without fake_bn is tested here.  
+* The first convolution layer is excluded when quantize.
+* Weights are quantized into int8 while inputs uint8 with one-side distribution.
+* No matter whether quantize inputs offline or not, the accuracy can be recovered well via retrain. 
+* Only a subset of trainset which contains 10000 images(10 for per class) is used when retrain the net.   
+* Note that if you use fake_bn, maybe total trainset should be used to retrain since max(abs(weights)) may be much larger when merge bn.
    
-**ONLINE**, **OFFLINE**: quantize activation online or offline.    
-**CALIB**: calibrate quantized parameters of activation with trainset.    
-**RETRAIN**: quantize aware training but without fake batchnrom.     
-**FAKEBN**: quantize aware training with fake batchnorm.      
-      
 ***More details refer to 《[MXNet上的重训练量化 | Hey~YaHei!](http://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)》.***

@@ -7,3 +7,5 @@ from .convert_act import *
 from .convert_bn import *
 
 from .convert import *
+
+from .convert_dense import *

@@ -19,7 +19,7 @@ python simulate_quantization.py --model=mobilnet1.0
 * Only **min-max linear** range is supported yet.         
 * You can specify **bit-width** for input-quantization and weight-quantization.
 * Quantize input **online** and **offline** are both supported.
-* Only calibrate via update EMA for input_min and input_max on subset of trainset for input offline-quantization.
+* Only calibrate via update EMA for input_max on subset of trainset for input offline-quantization.
 * All pretrained models are provided by gluon-cv.
 * More usages see the help message. 
     ```bash
@@ -93,10 +93,10 @@ python simulate_quantization.py --model=mobilnet1.0
 | float32 | / | float32 | / | / | 73.28% | 77.36% |
 | uint8 |   | int8 | layer | √ | 70.85% | 77.02% |
 | uint8 |   | int8 | layer |   | 44.44% | 55.90% |
-| uint8 | √ | int8 | layer | √ | 70.82% | 77.02% |
+| uint8 | √ | int8 | layer | √ | 70.90% | 77.02% |
 | uint8 |   | int8 | group | √ | 71.20% | 77.02% |
 | uint8 |   | int8 | group |   | 45.18% | 55.90% |
-| uint8 | √ | int8 | group | √ | 71.34% | 77.02% |
+| uint8 | √ | int8 | group | √ | 71.37% | 77.02% |
 | uint8 |   | int8 | channel | √ | 72.98% | 77.29% |
 | uint8 |   | int8 | channel |   | 47.89% | 56.26% |
 | uint8 | √ | int8 | channel | √ | 72.89% | 77.33% |
@@ -106,9 +106,10 @@ python simulate_quantization.py --model=mobilnet1.0
 * Inputs is usually quantized into unsigned int with one-side distribution since outputs of ReLU >= 0.
 * When quantize inputs offline, the range of input is calibrated thrice on subset of trainset, which contains 10000 
 images(10 per class).    
-* Per-group quantization is the same as per-layer quantization for ResNet because num_groups of all Convolutions are 1.
+* Per-group quantization is the same as per-layer quantization for Convolutions in ResNet because num_groups are 1.
+* Convolutions and FullyConnections are both quantize into int8.
 
-## Quantize Aware Train
+## Quantize Aware Training
 Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) with the implement of MXNet.
 ### Usage    
 1. Construct your gluon model. For example,     
@@ -129,7 +130,10 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
         1. Quantize inputs into uint8 with one-side distribution.
         2. Quantize weights with simple strategy of max-min into int8.
         3. Without fake batchnorm.
-    2. Do nothing for **BatchNorm** and **Activiation(ReLU)**.
+    2. Convert **Dense**
+        1. Quantize inputs into uint8 with one-side distribution.
+        2. Quantize weights with simple strategy of max-min into int8.
+    3. Do nothing for **BatchNorm** and **Activiation(ReLU)**.
 3. Initialize all quantized parameters.       
     ```python
     from quantize.initialize import qparams_init as qinit
@@ -142,6 +146,8 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
         outputs = net(X)
         loss = loss_func(outputs, y)
     net.update_ema()   # update ema for input and fake batchnorm
+    trainer.step(batch_size)
+    # trainer.step(batch_size, ignore_stale_grad=True)   # if bypass bn
     ```
     What's more, you can also switch quantize online or offline as follow:     
     ```python

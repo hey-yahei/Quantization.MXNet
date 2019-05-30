@@ -7,32 +7,31 @@ from mxnet.initializer import Constant
 __all__ = ["qparams_init"]
 
 
-def qparams_init(net, bn_name="batchnorm"):
+def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
     """
     Initialize quantized parameters for convolution op
     :param net: mxnet.gluon.nn.Block
         The net to initialize.
+    :param conv_name: str
+    :param bn_name: str
     :return: mxnet.gluon.nn.Block
         The net that has been initialized.
     """
-    convs = []
-    def _collect_convs(m):
-        if isinstance(m, nn.Conv2D):
-            convs.append(m)
-    net.apply(_collect_convs)
-
+    net_name = net.name
+    blocks = net.collect_quantized_blocks()
     params = net.collect_params()
-    for m in convs:
-        conv_name = m.name
-        weight = m.weight.data()
 
+    for m in blocks:
         # If fake bn, recalculate weight and initialize some related params
-        if hasattr(m, "gamma"):
+        if isinstance(m, nn.Conv2D) and hasattr(m, "gamma"):
+            name = m.name
+            weight = m.weight.data()
+
             # Get params of batchnorm
-            gamma = params[conv_name.replace(conv_name, bn_name) + "_gamma"].data()
-            beta = params[conv_name.replace(conv_name, bn_name) + "_beta"].data()
-            mean = params[conv_name.replace(conv_name, bn_name) + "_running_mean"].data()
-            var = params[conv_name.replace(conv_name, bn_name) + "_running_var"].data()
+            gamma = params[name.replace(conv_name, bn_name) + "_gamma"].data()
+            beta = params[name.replace(conv_name, bn_name) + "_beta"].data()
+            mean = params[name.replace(conv_name, bn_name) + "_running_mean"].data()
+            var = params[name.replace(conv_name, bn_name) + "_running_var"].data()
 
             # Store params of bn at conv
             m.gamma.initialize(Constant(gamma))
@@ -49,27 +48,8 @@ def qparams_init(net, bn_name="batchnorm"):
                                       shape=(cout,), init="zeros",
                                       allow_deferred_init=True)
                 m.bias.initialize()
-            weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / nd.sqrt(var + 1e-5).reshape(-1, 1)).reshape(w_shape)
-            # bias = gamma * (m.bias.data() - mean) / nd.sqrt(var + 1e-5) + beta
 
-        # Initialize for weight_min and weight_max
-        if hasattr(m, 'quantize_kwargs') and m.quantize_kwargs['weight']['training']:
-            if m.quantize_kwargs['weight']['signed']:
-                max = weight.abs().max()
-                min = -max
-            elif m.quantize_kwargs['weight']['one_side']:
-                max = weight.max()
-                min = None
-            else:
-                max = weight.max()
-                min = weight.min()
-            m.weight_max.initialize(Constant(max))
-            if min is not None:
-                m.weight_min.initialize(Constant(min))
-
-        if getattr(m, "input_min", None) is not None:
-            m.input_min.initialize(Constant(0))
-        if getattr(m, "input_max", None) is not None:
+        if m.quantize_args.quantize_input:
             m.input_max.initialize(Constant(0))
 
 

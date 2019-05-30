@@ -115,3 +115,6 @@ dmypy.json
 
 # PyCharm
 .idea
+
+# tmp
+examples/tmp/*

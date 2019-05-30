@@ -10,7 +10,7 @@ __all__ = ['gen_conv2d_converter']
 __author__ = "YaHei"
 
 
-QuantizedArgs = namedtuple("QuantizedArgs", "in_width wt_width quantize_input fake_bn quant_type")
+QuantizedArgs = namedtuple("ConvQuantizedArgs", "in_width wt_width quantize_input fake_bn quant_type")
 
 def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
                     gamma=None, beta=None, running_mean=None, running_var=None):
@@ -32,18 +32,18 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
     if self.quantize_args.quant_type == 'channel':
         num = self._kwargs['num_filter']
         max_ = weight.abs().reshape((num, -1)).max(axis=1)
-        scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+        scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
         scale = scale.reshape((num, 1, 1, 1))
         weight_q = (weight / scale).round() * scale
     elif self.quantize_args.quant_type == 'group':
         num = self._kwargs['num_group']
         max_ = weight.abs().reshape((num, -1)).max(axis=1)
-        scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+        scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
         scale = scale.reshape((num, 1, 1, 1))
         weight_q = (weight / scale).round() * scale
     else:
         max_ = weight.abs().max()
-        scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+        scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
         weight_q = (weight / scale).round() * scale
 
     # Normal convolution
@@ -81,12 +81,6 @@ def _add_fake_bn_params(m):
                                  init="ones",
                                  allow_deferred_init=True,
                                  differentiable=False)
-    if m.bias is None:
-        m._kwargs['no_bias'] = False
-        m.bias = m.params.get('bias',
-                              shape=m.weight.shape[0],
-                              init="zeros",
-                              allow_deferred_init=True)
 
 
 def _add_fake_bn_ema_hook(m):
@@ -101,8 +95,7 @@ def _add_fake_bn_ema_hook(m):
         m.current_var = ( diff_square.sum(axis=(2,3)).sum(axis=0) ) / num_samples
     m.register_forward_pre_hook(_ema_hook)
 
-def gen_conv2d_converter(weight_width=8, input_width=8, quantize_input=True, fake_bn=False,
-                         quant_type="layer"):
+def gen_conv2d_converter(weight_width=8, input_width=8, quantize_input=True, fake_bn=False, quant_type="layer"):
     def _converter(m):
         assert isinstance(m, Conv2D)
 

@@ -4,6 +4,7 @@ import types
 
 from mxnet.gluon import nn
 from .convert_conv2d import gen_conv2d_converter
+from .convert_dense import gen_dense_converter
 from .convert_act import convert_relu_to_relu6
 from .convert_bn import bypass_bn
 
@@ -12,6 +13,7 @@ __author__ = "YaHei"
 
 default_convert_fn = {
     nn.Conv2D: gen_conv2d_converter(),
+    nn.Dense: gen_dense_converter(),
     nn.Activation: None, # convert_relu_to_relu6,
     nn.BatchNorm: None # bypass_bn
 }
@@ -42,7 +44,7 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
 
     # Add method to update ema for `input_min` and `input_max` in convs
     def _update_ema(self, momentum=0.99):
-        for qconv in self.collect_quantized_convs():
+        for qconv in self.collect_quantized_blocks():
             if getattr(qconv, "input_max", None) is not None:
                 qconv.input_max.set_data((1 - momentum) * qconv.current_input_max + momentum * qconv.input_max.data())
             if getattr(qconv, "running_mean", None) is not None:
@@ -52,21 +54,21 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
     net.update_ema = types.MethodType(_update_ema, net)
 
     # Add a method to collect all quantized convolution blocks
-    def _collect_quantized_convs(self):
-        convs = []
-        def _collect_convs(m):
-            if isinstance(m, nn.Conv2D) and hasattr(m, 'quantize_args'):
-                convs.append(m)
-        net.apply(_collect_convs)
-        return convs
-    net.collect_quantized_convs = types.MethodType(_collect_quantized_convs, net)
+    def _collect_quantized_blocks(self):
+        blocks = []
+        def _collect_blocks(m):
+            if type(m) in (nn.Dense, nn.Conv2D) and hasattr(m, 'quantize_args'):
+                blocks.append(m)
+        net.apply(_collect_blocks)
+        return blocks
+    net.collect_quantized_blocks = types.MethodType(_collect_quantized_blocks, net)
 
     # Add method to control the mode of input quantization as online or offline
     def _quantize_input_offline(self):
-        for qconv in self.collect_quantized_convs():
+        for qconv in self.collect_quantized_blocks():
             qconv.quantize_input_offline = True
     def _quantize_input_online(self):
-        for qconv in self.collect_quantized_convs():
+        for qconv in self.collect_quantized_blocks():
             qconv.quantize_input_offline = False
     net.quantize_input_offline = types.MethodType(_quantize_input_offline, net)
     net.quantize_input_online = types.MethodType(_quantize_input_online, net)

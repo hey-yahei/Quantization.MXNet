@@ -39,7 +39,7 @@ def _add_quantize_input_params(m):
                                differentiable=False)
 
 
-def gen_dense_converter(weight_width=8, input_width=8, quantize_input=True):
+def gen_dense_converter(weight_width=8, input_width=8, quantize_input=False):
     def _converter(m):
         assert isinstance(m, Dense)
 

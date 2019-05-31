@@ -4,7 +4,7 @@ support quantization, but as we know, it is troublesome that they usually adopt 
     
 Here is a tool to help developers simulate quantization with various strategies(signed or unsigned, bits width, 
 one-side distribution or not, etc). What's more, quantization aware train is also provided, which will help you recover 
-performance of quantized models, especially for efficient ones like MobileNet.
+performance of quantized models, especially for compact ones like MobileNet.
 
 ## Simulate quantization     
 A tool is provided to simulate quantization for CNN models.     
@@ -204,6 +204,6 @@ I've tested mobilenet_v1_1.0 with `Adam` optimizer and no augments on ImageNet(I
 * Weights are quantized into int8 while inputs uint8 with one-side distribution.
 * No matter whether quantize inputs offline or not, the accuracy can be recovered well via retrain. 
 * Only a subset of trainset which contains 10000 images(10 for per class) is used when retrain the net.   
-* Note that if you use fake_bn, maybe total trainset should be used to retrain since max(abs(weights)) may be much larger when merge bn.
+* Note that if you use fake_bn, maybe total trainset should be used to retrain since max(abs(weights)) may become much larger when merge bn.
    
 ***More details refer to 《[MXNet上的重训练量化 | Hey~YaHei!](http://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)》.***

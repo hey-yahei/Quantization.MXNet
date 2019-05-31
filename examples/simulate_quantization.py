@@ -171,15 +171,24 @@ if __name__ == "__main__":
         print()
 
     # convert model to quantization version
-    conv_kwargs = {
-        'quantize_input': True,
-        'fake_bn': opt.fake_bn,
-        'weight_width': opt.weight_bits_width,
-        'input_width': opt.input_bits_width,
-        'quant_type': opt.quant_type
-    }
     convert_fn = {
-        nn.Conv2D: convert.gen_conv2d_converter(**conv_kwargs),
+        nn.Conv2D: convert.gen_conv2d_converter(
+            quantize_input=False,
+            fake_bn=opt.fake_bn,
+            weight_width=opt.weight_bits_width,
+            input_width=opt.input_bits_width,
+            quant_type=opt.quant_type
+        ),
+        nn.Dense: convert.gen_dense_converter(
+            quantize_input=False,
+            weight_width=opt.weight_bits_width,
+            input_width=opt.input_bits_width
+        ),
+        nn.Activation: convert.gen_act_converter(
+            quantize_act=True,
+            width=opt.input_bits_width
+        ),
+        # nn.Activation: None,
         nn.BatchNorm: convert.bypass_bn if opt.fake_bn else None
     }
     exclude_blocks = []
@@ -239,7 +248,7 @@ if __name__ == "__main__":
     # calibrate for input ranges and evaluate for simulation
     if opt.quantize_input_offline:
         for i in range(opt.calib_epoch):
-            net.quantize_input_online()
+            net.quantize_online()
             _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
                          tqdm_desc="Calib[{}/{}]".format(i+1, opt.calib_epoch))
             if opt.eval_per_calib:
@@ -251,7 +260,7 @@ if __name__ == "__main__":
                 print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
                 print('*' * (25 * 2 + len(' Calibration 00 ')))
         if not opt.eval_per_calib:
-            net.quantize_input_offline()
+            net.quantize_offline()
             acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
             print()
             print('*' * 25 + ' Result ' + '*' * 25)
@@ -259,7 +268,7 @@ if __name__ == "__main__":
             print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
             print('*' * (25 * 2 + len(' Result ')))
     else:
-        net.quantize_input_online()
+        net.quantize_online()
         acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
         print()
         print('*'*25 + ' Result ' + '*'*25)

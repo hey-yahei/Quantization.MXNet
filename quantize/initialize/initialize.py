@@ -17,7 +17,6 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
     :return: mxnet.gluon.nn.Block
         The net that has been initialized.
     """
-    net_name = net.name
     blocks = net.collect_quantized_blocks()
     params = net.collect_params()
 
@@ -49,7 +48,8 @@ def qparams_init(net, conv_name="conv", bn_name="batchnorm"):
                                       allow_deferred_init=True)
                 m.bias.initialize()
 
-        if m.quantize_args.quantize_input:
+        if type(m) in (nn.Conv2D, nn.Dense) and m.quantize_args.quantize_input:
             m.input_max.initialize(Constant(0))
-
+        if type(m) == nn.Activation and m.quantize_args.quantize_act:
+            m.act_max.initialize(Constant(0))
 

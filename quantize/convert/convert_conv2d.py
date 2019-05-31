@@ -95,7 +95,7 @@ def _add_fake_bn_ema_hook(m):
         m.current_var = ( diff_square.sum(axis=(2,3)).sum(axis=0) ) / num_samples
     m.register_forward_pre_hook(_ema_hook)
 
-def gen_conv2d_converter(weight_width=8, input_width=8, quantize_input=True, fake_bn=False, quant_type="layer"):
+def gen_conv2d_converter(weight_width=8, input_width=8, quantize_input=False, fake_bn=False, quant_type="layer"):
     def _converter(m):
         assert isinstance(m, Conv2D)
 

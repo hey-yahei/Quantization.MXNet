@@ -5,7 +5,7 @@ import types
 from mxnet.gluon import nn
 from .convert_conv2d import gen_conv2d_converter
 from .convert_dense import gen_dense_converter
-from .convert_act import convert_relu_to_relu6
+from .convert_act import gen_act_converter
 from .convert_bn import bypass_bn
 
 __all__ = ["convert_model", "convert_to_relu6", 'default_convert_fn']
@@ -14,12 +14,12 @@ __author__ = "YaHei"
 default_convert_fn = {
     nn.Conv2D: gen_conv2d_converter(),
     nn.Dense: gen_dense_converter(),
-    nn.Activation: None, # convert_relu_to_relu6,
+    nn.Activation: gen_act_converter(), # None, # convert_relu_to_relu6,
     nn.BatchNorm: None # bypass_bn
 }
 
 
-def convert_model(net, exclude=[], convert_fn=default_convert_fn):
+def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
     """
     Convert the model to the one with simulated quantization.
     :param net: mxnet.gluon.nn.Block
@@ -36,42 +36,52 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn):
     # Convert network
     def _convert(m):
         if m not in exclude:
-            m_type = type(m)
-            fn = convert_fn.get(m_type)
+            fn = custom_fn[m] if m in custom_fn else convert_fn.get(type(m))
             if fn is not None:
                 fn(m)
     net.apply(_convert)
 
     # Add method to update ema for `input_min` and `input_max` in convs
     def _update_ema(self, momentum=0.99):
-        for qconv in self.collect_quantized_blocks():
-            if getattr(qconv, "input_max", None) is not None:
-                qconv.input_max.set_data((1 - momentum) * qconv.current_input_max + momentum * qconv.input_max.data())
-            if getattr(qconv, "running_mean", None) is not None:
-                qconv.running_mean.set_data((1 - momentum) * qconv.current_mean + momentum * qconv.running_mean.data())
-            if getattr(qconv, "running_var", None) is not None:
-                qconv.running_var.set_data((1 - momentum) * qconv.current_var + momentum * qconv.running_var.data())
+        for qblocks in self.collect_quantized_blocks():
+            # if quantize input
+            if getattr(qblocks, "input_max", None) is not None:
+                qblocks.input_max.set_data((1 - momentum) * qblocks.current_input_max + momentum * qblocks.input_max.data())
+            # if quantize activation
+            if getattr(qblocks, "act_max", None) is not None:
+                qblocks.act_max.set_data((1 - momentum) * qblocks.current_act_max + momentum * qblocks.act_max.data())
+            # if fake bn
+            if getattr(qblocks, "running_mean", None) is not None:
+                qblocks.running_mean.set_data((1 - momentum) * qblocks.current_mean + momentum * qblocks.running_mean.data())
+            if getattr(qblocks, "running_var", None) is not None:
+                qblocks.running_var.set_data((1 - momentum) * qblocks.current_var + momentum * qblocks.running_var.data())
     net.update_ema = types.MethodType(_update_ema, net)
 
     # Add a method to collect all quantized convolution blocks
     def _collect_quantized_blocks(self):
         blocks = []
         def _collect_blocks(m):
-            if type(m) in (nn.Dense, nn.Conv2D) and hasattr(m, 'quantize_args'):
+            if type(m) in (nn.Dense, nn.Conv2D, nn.Activation) and hasattr(m, 'quantize_args'):
                 blocks.append(m)
         net.apply(_collect_blocks)
         return blocks
     net.collect_quantized_blocks = types.MethodType(_collect_quantized_blocks, net)
 
     # Add method to control the mode of input quantization as online or offline
-    def _quantize_input_offline(self):
-        for qconv in self.collect_quantized_blocks():
-            qconv.quantize_input_offline = True
-    def _quantize_input_online(self):
-        for qconv in self.collect_quantized_blocks():
-            qconv.quantize_input_offline = False
-    net.quantize_input_offline = types.MethodType(_quantize_input_offline, net)
-    net.quantize_input_online = types.MethodType(_quantize_input_online, net)
+    def _quantize_offline(self):
+        for qblocks in self.collect_quantized_blocks():
+            if type(qblocks) in (nn.Dense, nn.Conv2D):
+                qblocks.quantize_input_offline = True
+            elif type(qblocks) == nn.Activation:
+                qblocks.quantize_act_offline = True
+    def _quantize_online(self):
+        for qblocks in self.collect_quantized_blocks():
+            if type(qblocks) in (nn.Dense, nn.Conv2D):
+                qblocks.quantize_input_offline = False
+            elif type(qblocks) == nn.Activation:
+                qblocks.quantize_act_offline = False
+    net.quantize_offline = types.MethodType(_quantize_offline, net)
+    net.quantize_online = types.MethodType(_quantize_online, net)
 
 
 def convert_to_relu6(net, exclude=[]):

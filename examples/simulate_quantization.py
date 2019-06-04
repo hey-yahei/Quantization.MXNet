@@ -173,22 +173,22 @@ if __name__ == "__main__":
     # convert model to quantization version
     convert_fn = {
         nn.Conv2D: convert.gen_conv2d_converter(
-            quantize_input=False,
+            quantize_input=True,
             fake_bn=opt.fake_bn,
             weight_width=opt.weight_bits_width,
             input_width=opt.input_bits_width,
             quant_type=opt.quant_type
         ),
         nn.Dense: convert.gen_dense_converter(
-            quantize_input=False,
+            quantize_input=True,
             weight_width=opt.weight_bits_width,
             input_width=opt.input_bits_width
         ),
-        nn.Activation: convert.gen_act_converter(
-            quantize_act=True,
-            width=opt.input_bits_width
-        ),
-        # nn.Activation: None,
+        # nn.Activation: convert.gen_act_converter(
+        #     quantize_act=True,
+        #     width=opt.input_bits_width
+        # ),
+        nn.Activation: None,
         nn.BatchNorm: convert.bypass_bn if opt.fake_bn else None
     }
     exclude_blocks = []

@@ -4,6 +4,8 @@ import ctypes
 import json
 import os
 import functools
+from collections import OrderedDict
+
 import mxnet as mx
 from mxnet import symbol, nd, model
 from mxnet.base import _LIB, check_call
@@ -11,11 +13,12 @@ from mxnet.base import c_array, c_str, c_str_array, mx_uint
 from mxnet.base import SymbolHandle
 from mxnet.symbol import Symbol
 
+
 __all__ = ['quantize_symbol', 'quantize_params', 'FreezeHelper']
 __author__ = "YaHei"
 
 
-def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
+def quantize_symbol(sym, excluded_symbols=[], offline_params=[],
                      quantized_dtype='uint8', calib_quantize_op=False):
     """
     Quantize symbol.
@@ -44,62 +47,12 @@ def _quantize_symbol(sym, excluded_symbols=[], offline_params=[],
     check_call(_LIB.MXQuantizeSymbol(sym.handle,
                                      ctypes.byref(out),
                                      mx_uint(num_excluded_symbols),
-                                     # c_array(SymbolHandle, exclude),
                                      c_str_array(excluded_symbols),
                                      mx_uint(num_offline),
                                      c_array(ctypes.c_char_p, offline),
                                      c_str(quantized_dtype),
                                      ctypes.c_bool(calib_quantize_op)))
     return Symbol(out)
-
-
-def quantize_symbol(sym, excluded_symbols=[], offline_params=[],
-                     quantized_dtype='uint8', calib_quantize_op=False, quantize_input_offline=True):
-    """
-    Quantize symbol.
-    :param sym: mxnet.symbol.Symbol
-        The symbol to quantize.
-    :param excluded_symbols: list of mxnet.base.SymbolHandle
-        The handle of symbols to exclude.
-    :param offline_params: list of str
-        The names of parameters to quantize offline.
-    :param quantized_dtype: str {"int8", "uint8"}
-        The data type that you will quantize to.
-    :param calib_quantize_op: bool
-        Calibrate or not.(Only for quantization online.
-    :param quantize_input_offline: bool
-        Quantize the input of blocks such as convs, pools or not.
-    :return: mxnet.symbol.Symbol
-        The symbol that has been quantized.
-    """
-    sym = _quantize_symbol(sym=sym,
-                           excluded_symbols=excluded_symbols,
-                           offline_params=offline_params,
-                           quantized_dtype=quantized_dtype,
-                           calib_quantize_op=calib_quantize_op)
-
-    if quantize_input_offline:
-        sym_json = json.loads(sym.tojson())
-        for i, node in enumerate(sym_json['nodes']):
-            if node['op'] == '_contrib_quantize':
-                min_node_idx = i - 2
-                max_node_idx = i - 1
-            elif node['op'].startswith("_contrib_quantized_"):
-                min_node = sym_json['nodes'][min_node_idx]
-                max_node = sym_json['nodes'][max_node_idx]
-                min_node.update({
-                    "op": "null",
-                    "name": node['name'][len("quantized_"):-len("_fwd")] + "_input_min",
-                    "inputs": []
-                })
-                max_node.update({
-                    "op": "null",
-                    "name": node['name'][len("quantized_"):-len("_fwd")] + "_input_max",
-                    "inputs": []
-                })
-        sym = symbol.load_json(json.dumps(sym_json))
-
-    return sym
 
 
 def quantize_params(qsym, params):
@@ -126,7 +79,7 @@ def quantize_params(qsym, params):
             val, vmin, vmax = nd.contrib.quantize(data=params[original_name],
                                                   min_range=params[original_name+"_min"],
                                                   max_range=params[original_name+"_max"],
-                                                  out_type="uint8")
+                                                  out_type="int8")
             quantized_params[name] = val
             quantized_params[name+'_min'] = vmin
             quantized_params[name+'_max'] = vmax
@@ -135,16 +88,38 @@ def quantize_params(qsym, params):
     return quantized_params
 
 
+def calibrate_quantized_sym(qsym, th_dict):
+    if th_dict is None or len(th_dict) == 0:
+        return qsym
+    num_layer_outputs = len(th_dict)
+    layer_output_names = []
+    min_vals = []
+    max_vals = []
+    for k, v in th_dict.items():
+        layer_output_names.append(k)
+        min_vals.append(v[0])
+        max_vals.append(v[1])
+
+    calibrated_sym = SymbolHandle()
+    check_call(_LIB.MXSetCalibTableToQuantizedSymbol(qsym.handle,
+                                                     mx_uint(num_layer_outputs),
+                                                     c_str_array(layer_output_names),
+                                                     c_array(ctypes.c_float, min_vals),
+                                                     c_array(ctypes.c_float, max_vals),
+                                                     ctypes.byref(calibrated_sym)))
+    return Symbol(calibrated_sym)
+
+
 class FreezeHelper(object):
-    def __init__(self, net, params_filename, input_shape):
+    def __init__(self, net, params_filename):
         """
         A helper for freezing.
         :param net: mxnet.gluon.nn.Block
             The origin net that you want to load trained parameters and freeze.
         :param params_filename: str
             The filename of the trained parameters.
-        :param input_shape: tuple
-            The shape of input. For example, (1, 3, 224, 224) for MobileNet.
+        # :param input_shape: tuple
+        #     The shape of input. For example, (1, 3, 224, 224) for MobileNet.
         """
         self.origin_net = net
         self.gluon_params_filename = params_filename
@@ -179,18 +154,37 @@ class FreezeHelper(object):
         except:
             return False
 
-    def _extract_qparams(self, net, gluon_params_filename):
-        gluon_params = nd.load(gluon_params_filename)
-        quantized_params = {}
+    def _act_max_list(self):
+        gluon_params = nd.load(self.gluon_params_filename)
+        act_max_list = OrderedDict()
         for k in gluon_params.keys():
             *others, attr_name = k.split(".")
-            atom_block = functools.reduce(
-                lambda b, n: b[int(n)] if self._is_number(n) else getattr(b, n),
-                others, net
-            )
-            if attr_name in ("weight_min", "weight_max", "input_min", "input_max"):
-                quantized_params[atom_block.name + "_" + attr_name] = gluon_params[k]
-        return quantized_params
+            if attr_name == "act_max":
+                atom_block = functools.reduce(
+                    lambda b, n: b[int(n)] if self._is_number(n) else getattr(b, n),
+                    others, self.origin_net
+                )
+                act_max_list[f'{atom_block.name}'] = gluon_params[k].asscalar()
+        return act_max_list
+
+    def _set_min_max(self, sym):
+        act_max = list( self._act_max_list().values() )
+        sym_json = json.loads(sym.tojson())
+
+        for i, node in enumerate(sym_json['nodes']):
+            if node['op'] == '_contrib_quantize_v2':
+                max_ = act_max.pop(0)
+                print(f"{node['name']}: max_range: {max_}")
+                node['attrs']['min_calib_range'] = 0.
+                node['attrs']['max_calib_range'] = max_
+            elif node['op'] == '_sg_mkldnn_conv' and node['attrs'].get('quantized', None) == 'true':
+                max_ = act_max.pop(0)
+                print(f"{node['name']}: max_range: {max_}")
+                node['attrs']['min_calib_range'] = 0.
+                node['attrs']['max_calib_range'] = max_
+        assert act_max == []
+
+        return mx.sym.load_json(json.dumps(sym_json))
 
     def freeze(self, excluded_symbol=[], offline_params=[], quantized_dtype="uint8",
                calib_quantize_op=False, quantize_input_offline=True):
@@ -208,18 +202,17 @@ class FreezeHelper(object):
             Refer to `quantize_symbol` function.
         :return:
         """
-
-        # exclude = [s for s in self.sym.get_internals() if s.name in excluded_symbol]
         qsym = quantize_symbol(sym=self.sym,
-                               # excluded_symbols=exclude,
                                excluded_symbols=excluded_symbol,
                                offline_params=offline_params,
                                quantized_dtype=quantized_dtype,
-                               calib_quantize_op=calib_quantize_op,
-                               quantize_input_offline=quantize_input_offline)
-        qsym = qsym.get_backend_symbol("MKLDNN_POST_QUANTIZE")
-        quantized_params = self._extract_qparams(self.origin_net, self.gluon_params_filename)
-        self.args.update(quantized_params)
+                               calib_quantize_op=calib_quantize_op)
+        qsym = qsym.get_backend_symbol("MKLDNN_QUANTIZE")
+        qsym.save("./test.json")
+        qsym = self._set_min_max(qsym)
+
+        # quantized_params = self._extract_qparams(self.origin_net, self.gluon_params_filename)
+        # self.args.update(quantized_params)
         qargs = quantize_params(qsym, self.args)
         return qsym, qargs, self.auxes
 

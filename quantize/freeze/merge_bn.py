@@ -42,7 +42,7 @@ def _merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
             w_shape = conv.weight.shape
             cout = w_shape[0]
             conv.weight.set_data( (weight.reshape(cout, -1) * gamma.reshape(-1, 1) \
-                                  / nd.sqrt(var + 1e-5).reshape(-1, 1)).reshape(w_shape) )
+                                  / nd.sqrt(var + 1e-10).reshape(-1, 1)).reshape(w_shape) )
             if conv.bias is None:
                 conv._kwargs['no_bias'] = False
                 conv.bias = conv.params.get('bias',
@@ -50,7 +50,7 @@ def _merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):
                                             allow_deferred_init=True)
                 conv.bias.initialize()
             bias = conv.bias.data()
-            conv.bias.set_data(gamma * (bias - mean) / nd.sqrt(var + 1e-5) + beta)
+            conv.bias.set_data(gamma * (bias - mean) / nd.sqrt(var + 1e-10) + beta)
 
 
 def merge_bn(net, conv_name="conv", bn_name="batchnorm", exclude=[]):

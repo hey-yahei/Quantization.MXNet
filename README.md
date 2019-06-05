@@ -15,7 +15,8 @@ For example, simulate quantization for mobilnet1.0,
 cd examples
 python simulate_quantization.py --model=mobilnet1.0
 ```
-* **Per-layer**, **per-group** and **per-channel** quantizations are supported now.
+* **Per-layer**, **per-group**, **per-channel** quantizations are supported now.
+* For FullyConnection layer, **per-group** and **per-channel** both mean that weights wil be grouped by units.
 * Only **min-max linear** range is supported yet.         
 * You can specify **bit-width** for input-quantization and weight-quantization.
 * Quantize input **online** and **offline** are both supported.
@@ -30,6 +31,7 @@ python simulate_quantization.py --model=mobilnet1.0
                                     [--batch-norm] [--use-se] [--last-gamma]
                                     [--fake-bn]
                                     [--weight-bits-width WEIGHT_BITS_WIDTH]
+                                    [--input-signed INPUT_SIGNED]
                                     [--input-bits-width INPUT_BITS_WIDTH]
                                     [--quant-type {layer,group,channel}]
                                     [-j NUM_WORKERS] [--batch-size BATCH_SIZE]
@@ -59,6 +61,9 @@ python simulate_quantization.py --model=mobilnet1.0
       --fake-bn             use fake batchnorm or not.
       --weight-bits-width WEIGHT_BITS_WIDTH
                             bits width of weight to quantize into.
+      --input-signed INPUT_SIGNED
+                            quantize inputs into int(true) or uint(fasle).
+                            (default: false)
       --input-bits-width INPUT_BITS_WIDTH
                             bits width of input to quantize into.
       --quant-type {layer,group,channel}
@@ -88,28 +93,31 @@ python simulate_quantization.py --model=mobilnet1.0
     ```    
 
 ### Results      
-| IN dtype | IN offline | WT dtype | WT qtype | w/o 1st conv | M-Top1 Acc | R-Top1 Acc |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| float32 | / | float32 | / | / | 73.28% | 77.36% |
-| uint8 |   | int8 | layer | √ | 70.85% | 77.02% |
-| uint8 |   | int8 | layer |   | 44.44% | 55.90% |
-| uint8 | √ | int8 | layer | √ | 70.90% | 77.02% |
-| uint8 |   | int8 | group | √ | 71.20% | 77.02% |
-| uint8 |   | int8 | group |   | 45.18% | 55.90% |
-| uint8 | √ | int8 | group | √ | 71.37% | 77.02% |
-| uint8 |   | int8 | channel | √ | 72.98% | 77.29% |
-| uint8 |   | int8 | channel |   | 47.89% | 56.26% |
-| uint8 | √ | int8 | channel | √ | 72.89% | 77.33% |
+| IN dtype | IN offline | WT dtype | WT qtype | Merge BN | w/o 1st conv | M-Top1 Acc | R-Top1 Acc |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| float32 | / | float32 | / |   | / | 73.28% | 77.36% |
+| uint8 |   | int8 | layer |   | √ | 70.84% | 76.92% |
+| uint8 |   | int8 | layer |   |   | 44.57% | 55.97% |
+| uint8 | √ | int8 | layer |   | √ | 70.85% | 76.99% |
+| int8 | √ | int8 | layer |   | √ | 70.15% | 76.88% |
+| int8 |   | int8 | layer | √ | √ | 15.21% | 76.62% |
+| int8 | √ | int8 | layer | √ | √ | 31.47% | 76.61% |
+| uint8 |   | int8 | channel |   | √ | 72.93% | 77.33% |
+| uint8 |   | int8 | channel |   |   | 47.80% | 56.21% |
+| uint8 | √ | int8 | channel |   | √ | 72.83% | 77.31% |
+| int8 | √ | int8 | channel |   | √ | 72.44% | 77.19% |
+| int8 |   | int8 | channel | √ | √ | 72.13% | 77.11% |
+| int8 | √ | int8 | channel | √ | √ | 71.57% | 76.72% |
 
 * **IN**: INput, **WT**: WeighT
 * **M-Top1 Acc**: Top-1 Acc of MobileNetv1-1.0, **R-Top1 Acc**: Top-1 Acc of ResNet50-v1
 * Inputs is usually quantized into unsigned int with one-side distribution since outputs of ReLU >= 0.
 * When quantize inputs offline, the range of input is calibrated thrice on subset of trainset, which contains 10000 
 images(10 per class).    
-* Per-group quantization is the same as per-layer quantization for Convolutions in ResNet because num_groups are 1.
-* Convolutions and FullyConnections are both quantize into int8.
+* Merge BatchNorm before quantization seams terrible for per-layer because some `max(abs(weight))` would be much larger after merge bn.
+* Convolutions and FullyConnections are both quantized.
 
-## Quantize Aware Training
+## Quantization Aware Training
 Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) with the implement of MXNet.
 ### Usage    
 1. Construct your gluon model. For example,     
@@ -121,23 +129,26 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     ```python
     from quantize.convert import convert_model
     exclude = [...]     # the blocks that you don't want to quantize
-                        # such as the first conv and the last fc
+                        # such as the first conv
+    convert_fn = {...}
+    
     convert_model(net, exclude)
     # convert_model(net, exclude, convert_fn)   # if need to specify converter
     ```
     By default,     
     1. Convert **Conv2D**
         1. Quantize inputs into uint8 with one-side distribution.
-        2. Quantize weights with simple strategy of max-min into int8.
+        2. Quantize weights(per-layer) with simple strategy of max-min into int8.
         3. Without fake batchnorm.
     2. Convert **Dense**
         1. Quantize inputs into uint8 with one-side distribution.
-        2. Quantize weights with simple strategy of max-min into int8.
+        2. Quantize weights(per-layer) with simple strategy of max-min into int8.
     3. Do nothing for **BatchNorm** and **Activiation(ReLU)**.
+    4. Note that if you use fake_bn, bypass_bn must be set for BatchNorm layer.
 3. Initialize all quantized parameters.       
     ```python
-    from quantize.initialize import qparams_init as qinit
-    qinit(net)
+    from quantize.initialize import qparams_init
+    qparams_init(net)
     ```
 4. Train as usual.
     Note that you should update ema data after forward.      
@@ -151,9 +162,26 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     ```
     What's more, you can also switch quantize online or offline as follow:     
     ```python
-    net.quantize_input_online()
-    net.quantize_input_offline()
+    net.quantize_online()
+    net.quantize_offline()
     ```
+
+### Deploy to third-party platform
+#### [Tengine](https://github.com/OAID/Tengine)
+Tengine support int8-inference for explore version, you can just export gluon model to mxnet model(with a `.json` file and a `.param` file) with float32 parameters. Tengine will parse it and use int8-inference online automatically.       
+Note that, in Tengine,    
+1. Weights are quantized into int8.     
+2. Inputs(Activations) are quantized into int8 or uint8(optional).
+3. BatchNorm would be fused into Convolution, and then quantize weights.
+4. Per-group quantization is used.
+
+#### [ncnn](https://github.com/Tencent/ncnn)
+ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel at first.    
+Generate scales table just as `examples/mobilenet_gluon2ncnn.ipynb` does and convert caffemodel to ncnnmodel with `caffe2ncnn` tool which is provided by ncnn.     
+Note that, in ncnn,
+1. Both weights and inputs(activations) are quantized into int8.
+2. BatchNorm should be fused into Convolution before you calculate scales for weights(retrain with fake_bn may help recover accuracy).
+3. Per-channel quantization is used. 
     
 <!--
 ### Freeze(have not tested)    
@@ -198,12 +226,14 @@ I've tested mobilenet_v1_1.0 with `Adam` optimizer and no augments on ImageNet(I
 | int8/uint8 | layer |   | √ |   | 73.01% |
 | int8/uint8 | layer | √ |   |   | 70.90% |
 | int8/uint8 | layer | √ | √ |   | 73.04% |
+| int8/int8 | channel | √ |   | √ | 71.57% |
+| int8/int8 | channel | √ | √ | √ | 72.46% |
 
 * Only per-layer quantization without fake_bn is tested here.  
 * The first convolution layer is excluded when quantize.
 * Weights are quantized into int8 while inputs uint8 with one-side distribution.
 * No matter whether quantize inputs offline or not, the accuracy can be recovered well via retrain. 
 * Only a subset of trainset which contains 10000 images(10 for per class) is used when retrain the net.   
-* Note that if you use fake_bn, maybe total trainset should be used to retrain since max(abs(weights)) may become much larger when merge bn.
+* Retraining seams not very useful for per-channel quantization but a little benefit for fake bn.
    
 ***More details refer to 《[MXNet上的重训练量化 | Hey~YaHei!](http://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)》.***

@@ -47,6 +47,8 @@ def parse_args():
                         help='use fake batchnorm or not.')
     parser.add_argument('--weight-bits-width', type=int, default=8,
                         help='bits width of weight to quantize into.')
+    parser.add_argument('--input-signed', type=str, default="false",
+                        help='quantize inputs into int(true) or uint(fasle). (default: false)')
     parser.add_argument('--input-bits-width', type=int, default=8,
                         help='bits width of input to quantize into.')
     parser.add_argument('--quant-type', type=str, default="layer",
@@ -175,14 +177,17 @@ if __name__ == "__main__":
         nn.Conv2D: convert.gen_conv2d_converter(
             quantize_input=True,
             fake_bn=opt.fake_bn,
+            input_signed=opt.input_signed == 'true',
             weight_width=opt.weight_bits_width,
             input_width=opt.input_bits_width,
             quant_type=opt.quant_type
         ),
         nn.Dense: convert.gen_dense_converter(
             quantize_input=True,
+            input_signed=opt.input_signed == 'true',
             weight_width=opt.weight_bits_width,
-            input_width=opt.input_bits_width
+            input_width=opt.input_bits_width,
+            quant_type=opt.quant_type
         ),
         # nn.Activation: convert.gen_act_converter(
         #     quantize_act=True,
@@ -196,6 +201,10 @@ if __name__ == "__main__":
         exclude_blocks.append(net.features[0])
     if model_name.startswith('mobilenetv2_'):
         exclude_blocks.append(net.output[0])
+    if opt.fake_bn:
+        block = net.features[1]
+        if isinstance(block, nn.BatchNorm):
+            exclude_blocks.append(block)
     print('*'*25 + ' Exclude blocks ' + '*'*25)
     for b in exclude_blocks:
         print(b.name)

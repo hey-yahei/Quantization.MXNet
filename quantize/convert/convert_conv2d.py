@@ -31,8 +31,8 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
     if self.quantize_args.fake_bn:
         w_shape = weight.shape
         cout = w_shape[0]
-        weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / F.sqrt(running_var + 1e-5).reshape(-1, 1)).reshape(w_shape)
-        bias = gamma * (bias - running_mean) / F.sqrt(running_var + 1e-5) + beta
+        weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / F.sqrt(running_var + 1e-10).reshape(-1, 1)).reshape(w_shape)
+        bias = gamma * (bias - running_mean) / F.sqrt(running_var + 1e-10) + beta
 
     # Simulate quantization for weight
     if self.quantize_args.quant_type == 'channel':

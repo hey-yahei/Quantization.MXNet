@@ -6,6 +6,16 @@ Here is a tool to help developers simulate quantization with various strategies(
 one-side distribution or not, etc). What's more, quantization aware train is also provided, which will help you recover 
 performance of quantized models, especially for compact ones like MobileNet.
 
+* [Simulate quantization](#simulate-quantization)
+    * [Usage](#usage)
+    * [Results](#results)
+* [Quantization Aware Training](#quantization-aware-training)
+    * [Usage](#usage-1)
+    * [Results](#results-1)
+    * [Deploy to third-party platform](#deploy-to-third-party-platform)
+        * [Tengine](#tengine)
+        * [ncnn](#ncnn)
+
 ## Simulate quantization     
 A tool is provided to simulate quantization for CNN models.     
 
@@ -165,23 +175,6 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     net.quantize_online()
     net.quantize_offline()
     ```
-
-### Deploy to third-party platform
-#### [Tengine](https://github.com/OAID/Tengine)
-Tengine support int8-inference for explore version, you can just export gluon model to mxnet model(with a `.json` file and a `.param` file) with float32 parameters. Tengine will parse it and use int8-inference online automatically.       
-Note that, in Tengine,    
-1. Weights are quantized into int8.     
-2. Inputs(Activations) are quantized into int8 or uint8(optional).
-3. BatchNorm would be fused into Convolution, and then quantize weights.
-4. Per-group quantization is used.
-
-#### [ncnn](https://github.com/Tencent/ncnn)
-ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel at first.    
-Generate scales table just as `examples/mobilenet_gluon2ncnn.ipynb` does and convert caffemodel to ncnnmodel with `caffe2ncnn` tool which is provided by ncnn.     
-Note that, in ncnn,
-1. Both weights and inputs(activations) are quantized into int8.
-2. BatchNorm should be fused into Convolution before you calculate scales for weights(retrain with fake_bn may help recover accuracy).
-3. Per-channel quantization is used. 
     
 <!--
 ### Freeze(have not tested)    
@@ -235,5 +228,24 @@ I've tested mobilenet_v1_1.0 with `Adam` optimizer and no augments on ImageNet(I
 * No matter whether quantize inputs offline or not, the accuracy can be recovered well via retrain. 
 * Only a subset of trainset which contains 10000 images(10 for per class) is used when retrain the net.   
 * Retraining seams not very useful for per-channel quantization but a little benefit for fake bn.
+   
+### Deploy to third-party platform
+#### [Tengine](https://github.com/OAID/Tengine)
+Tengine support int8-inference for explorer version, you can just export gluon model to mxnet model(with a `.json` file and a `.param` file) with float32 parameters. Tengine will parse it and use int8-inference online automatically.       
+Note that, in Tengine,    
+1. Weights are quantized into int8.     
+2. Inputs(Activations) are quantized into int8 or uint8(optional).
+3. BatchNorm would be fused into Convolution, and then quantize weights.
+4. Per-group quantization is used.
+
+#### [ncnn](https://github.com/Tencent/ncnn)
+ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel at first.    
+Generate scales table just as `examples/mobilenet_gluon2ncnn.ipynb` does and convert caffemodel to ncnnmodel with `caffe2ncnn` tool which is provided by ncnn.     
+Note that, in ncnn,
+1. Both weights and inputs(activations) are quantized into int8.
+2. BatchNorm should be fused into Convolution before you calculate scales for weights(retrain with fake_bn may help recover accuracy).
+3. Per-channel quantization is used. 
+   
+---------------------        
    
 ***More details refer to 《[MXNet上的重训练量化 | Hey~YaHei!](http://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)》.***

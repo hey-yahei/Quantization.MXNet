@@ -116,7 +116,7 @@ python simulate_quantization.py --model=mobilnet1.0
 | uint8 |   | int8 | channel |   |   | 47.80% | 56.21% |
 | uint8 | √ | int8 | channel |   | √ | 72.83% | 77.31% |
 | int8 | √ | int8 | channel |   | √ | 72.44% | 77.19% |
-| int8 |   | int8 | channel | √ | √ | 72.13% | 77.11% |
+| int8 |   | int8 | channel | √ | √ | 72.75% | 77.11% |
 | int8 | √ | int8 | channel | √ | √ | 71.57% | 76.72% |
 
 * **IN**: INput, **WT**: WeighT
@@ -222,9 +222,8 @@ I've tested mobilenet_v1_1.0 with `Adam` optimizer and no augments on ImageNet(I
 | int8/int8 | channel | √ |   | √ | 71.57% |
 | int8/int8 | channel | √ | √ | √ | 72.46% |
 
-* Only per-layer quantization without fake_bn is tested here.  
 * The first convolution layer is excluded when quantize.
-* Weights are quantized into int8 while inputs uint8 with one-side distribution.
+* Weights are quantized into int8 while inputs int8/uint8.
 * No matter whether quantize inputs offline or not, the accuracy can be recovered well via retrain. 
 * Only a subset of trainset which contains 10000 images(10 for per class) is used when retrain the net.   
 * Retraining seams not very useful for per-channel quantization but a little benefit for fake bn.
@@ -239,7 +238,7 @@ Note that, in Tengine,
 4. Per-group quantization is used.
 
 #### [ncnn](https://github.com/Tencent/ncnn)
-ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel at first.    
+ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel with [GluonConverter](https://github.com/hey-yahei/GluonConverter) at first.    
 Generate scales table just as `examples/mobilenet_gluon2ncnn.ipynb` does and convert caffemodel to ncnnmodel with `caffe2ncnn` tool which is provided by ncnn.     
 Note that, in ncnn,
 1. Both weights and inputs(activations) are quantized into int8.

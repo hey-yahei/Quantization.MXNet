@@ -1,4 +1,25 @@
 #-*- coding: utf-8 -*-
+# MIT License
+#
+# Copyright (c) 2019 hey-yahei
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 from mxnet import cpu, gpu, nd
 from mxnet.gluon import nn
@@ -11,7 +32,6 @@ from gluoncv.data import ImageNet
 import argparse
 import numpy as np
 from tqdm import tqdm
-import warnings
 
 import sys
 sys.path.append("..")
@@ -19,6 +39,7 @@ from quantize import convert
 from quantize.initialize import qparams_init
 
 __author__ = "YaHei"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Simulate for quantization.')
@@ -88,6 +109,7 @@ def parse_args():
     print()
     return opt
 
+
 def evaluate(net, num_class, dataloader, ctx, update_ema=False, tqdm_desc="Eval"):
     correct_counter = nd.zeros(num_class)
     label_counter = nd.zeros(num_class)
@@ -116,11 +138,13 @@ def evaluate(net, num_class, dataloader, ctx, update_ema=False, tqdm_desc="Eval"
     eval_acc_avg = (correct_counter / (label_counter + 1e-10)).mean().asscalar()
     return eval_acc, eval_acc_avg
 
+
 class UniformSampler(Sampler):
     def __init__(self, classes, num_per_class, labels):
         self._classes = classes
         self._num_per_class = num_per_class
         self._labels = labels
+
     def __iter__(self):
         sample_indices = []
         label_counter = np.zeros(self._classes)
@@ -137,8 +161,10 @@ class UniformSampler(Sampler):
             if cnt < self._num_per_class:
                 raise ValueError("Number of samples for class {} is {} < {}".format(idx, cnt, self._num_per_class))
         return iter(sample_indices)
+
     def __len__(self):
         return self._classes * self._num_per_class
+
 
 if __name__ == "__main__":
     opt = parse_args()

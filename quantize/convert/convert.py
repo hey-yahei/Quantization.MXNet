@@ -26,7 +26,7 @@ import types
 from mxnet.gluon import nn
 from .convert_conv2d import gen_conv2d_converter
 from .convert_dense import gen_dense_converter
-from .convert_act import gen_act_converter
+from .convert_act import gen_act_converter, convert_relu_to_relu6
 from .convert_bn import bypass_bn
 
 __all__ = ["convert_model", "convert_to_relu6", 'default_convert_fn']
@@ -103,6 +103,18 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
                 qblocks.quantize_act_offline = False
     net.quantize_offline = types.MethodType(_quantize_offline, net)
     net.quantize_online = types.MethodType(_quantize_online, net)
+
+    # Add method to control enable/disable quantization
+    def _enable_quantize(self):
+        for qblocks in self.collect_quantized_blocks():
+            if type(qblocks) in (nn.Dense, nn.Conv2D, nn.Activation):
+                qblocks.quantize_args.enable = True
+    def _disable_quantize(self):
+        for qblocks in self.collect_quantized_blocks():
+            if type(qblocks) in (nn.Dense, nn.Conv2D, nn.Activation):
+                qblocks.quantize_args.enable = False
+    net.enable_quantize = types.MethodType(_enable_quantize, net)
+    net.disable_quantize = types.MethodType(_disable_quantize, net)
 
 
 def convert_to_relu6(net, exclude=[]):

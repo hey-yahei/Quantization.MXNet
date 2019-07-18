@@ -32,46 +32,48 @@ __author__ = "YaHei"
 
 
 QuantizedArgs = namedtuple("ConvQuantizedArgs",
+                           "enable"
                            "quantize_input in_signed in_width "
                            "wt_width quant_type "
                            "fake_bn")
 
 def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
                     gamma=None, beta=None, running_mean=None, running_var=None):
-    # Quantize input
-    if self.quantize_args.quantize_input:
-        self.current_input_max = F.max(F.abs(x)).asscalar()
-        max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
-        if self.quantize_args.in_signed:
-            in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+    if self.quantize_args.enable:
+        # Quantize input
+        if self.quantize_args.quantize_input:
+            self.current_input_max = F.max(F.abs(x)).asscalar()
+            max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
+            if self.quantize_args.in_signed:
+                in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+            else:
+                in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
+            x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
+
+        # Fake bn
+        if self.quantize_args.fake_bn:
+            w_shape = weight.shape
+            cout = w_shape[0]
+            weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / F.sqrt(running_var + 1e-10).reshape(-1, 1)).reshape(w_shape)
+            bias = gamma * (bias - running_mean) / F.sqrt(running_var + 1e-10) + beta
+
+        # Simulate quantization for weight
+        if self.quantize_args.quant_type == 'channel':
+            num = self._kwargs['num_filter']
+            max_ = weight.abs().reshape((num, -1)).max(axis=1)
+            wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
+            wt_scale = wt_scale.reshape((num, 1, 1, 1))
+            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+        elif self.quantize_args.quant_type == 'group':
+            num = self._kwargs['num_group']
+            max_ = weight.abs().reshape((num, -1)).max(axis=1)
+            wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
+            wt_scale = wt_scale.reshape((num, 1, 1, 1))
+            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
         else:
-            in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
-        x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
-
-    # Fake bn
-    if self.quantize_args.fake_bn:
-        w_shape = weight.shape
-        cout = w_shape[0]
-        weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / F.sqrt(running_var + 1e-10).reshape(-1, 1)).reshape(w_shape)
-        bias = gamma * (bias - running_mean) / F.sqrt(running_var + 1e-10) + beta
-
-    # Simulate quantization for weight
-    if self.quantize_args.quant_type == 'channel':
-        num = self._kwargs['num_filter']
-        max_ = weight.abs().reshape((num, -1)).max(axis=1)
-        wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-        wt_scale = wt_scale.reshape((num, 1, 1, 1))
-        weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-    elif self.quantize_args.quant_type == 'group':
-        num = self._kwargs['num_group']
-        max_ = weight.abs().reshape((num, -1)).max(axis=1)
-        wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-        wt_scale = wt_scale.reshape((num, 1, 1, 1))
-        weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-    else:
-        max_ = weight.abs().max()
-        wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-        weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            max_ = weight.abs().max()
+            wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
+            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
 
     # Normal convolution
     act = self.origin_forward(F, x, weight_q, bias)
@@ -135,6 +137,6 @@ def gen_conv2d_converter(weight_width=8, quant_type="layer",
             _add_fake_bn_ema_hook(m)
         m.origin_forward = m.hybrid_forward
         m.hybrid_forward = types.MethodType(_conv2d_forward, m)
-        m.quantize_args = QuantizedArgs(in_signed=input_signed, in_width=input_width, wt_width=weight_width,
+        m.quantize_args = QuantizedArgs(enable=True, in_signed=input_signed, in_width=input_width, wt_width=weight_width,
                                         quantize_input=quantize_input, fake_bn=fake_bn, quant_type=quant_type)
     return _converter

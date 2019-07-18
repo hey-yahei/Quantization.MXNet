@@ -29,11 +29,11 @@ from mxnet.gluon.nn import Dense
 __all__ = ['gen_dense_converter']
 __author__ = 'YaHei'
 
-QuantizedArgs = namedtuple("DenseQuantizedArgs", "enable in_signed in_width wt_width quantize_input quant_type")
+QuantizedArgs = namedtuple("DenseQuantizedArgs", "in_signed in_width wt_width quantize_input quant_type")
 
 
 def _dense_forward(self, F, x, weight, bias=None, input_max=None):
-    if self.quantize_args.enable:
+    if self.enable_quantize:
         # Quantize input
         if self.quantize_args.quantize_input:
             self.current_input_max = F.max(F.abs(x)).asscalar()
@@ -55,6 +55,8 @@ def _dense_forward(self, F, x, weight, bias=None, input_max=None):
             max_ = weight.abs().max()
             scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             weight_q = (weight / (scale + 1e-10)).round() * scale
+    else:
+        weight_q = weight
 
     # Normal dense
     act = self.origin_forward(F, x, weight_q, bias)
@@ -82,6 +84,7 @@ def gen_dense_converter(weight_width=8, input_signed=False, input_width=8, quant
             _add_quantize_input_params(m)
         m.origin_forward = m.hybrid_forward
         m.hybrid_forward = types.MethodType(_dense_forward, m)
-        m.quantize_args = QuantizedArgs(enable=True, in_signed=input_signed, in_width=input_width, wt_width=weight_width,
+        m.quantize_args = QuantizedArgs(in_signed=input_signed, in_width=input_width, wt_width=weight_width,
                                         quantize_input=quantize_input, quant_type=quant_type)
+        m.enable_quantize = True
     return _converter

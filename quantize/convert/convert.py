@@ -108,11 +108,11 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
     def _enable_quantize(self):
         for qblocks in self.collect_quantized_blocks():
             if type(qblocks) in (nn.Dense, nn.Conv2D, nn.Activation):
-                qblocks.quantize_args.enable = True
+                qblocks.enable_quantize = True
     def _disable_quantize(self):
         for qblocks in self.collect_quantized_blocks():
             if type(qblocks) in (nn.Dense, nn.Conv2D, nn.Activation):
-                qblocks.quantize_args.enable = False
+                qblocks.enable_quantize = False
     net.enable_quantize = types.MethodType(_enable_quantize, net)
     net.disable_quantize = types.MethodType(_disable_quantize, net)
 

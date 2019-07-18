@@ -29,7 +29,7 @@ __all__ = ["convert_relu_to_relu6", 'gen_act_converter']
 __author__ = "YaHei"
 
 
-QuantizedArgs = namedtuple("ActQuantizedArgs", "enable width quantize_act")
+QuantizedArgs = namedtuple("ActQuantizedArgs", "width quantize_act")
 
 
 def _relu6_forward(self, F, x):
@@ -46,7 +46,7 @@ def _act_forward(self, F, x, act_max=None):
     act = self.origin_forward(F, x)
 
     # Simulate quantization
-    if self.quantize_args.enable and self.quantize_args.quantize_act:
+    if self.enable_quantize and self.quantize_args.quantize_act:
         self.current_act_max = F.max(act).asscalar()
         max_ = act_max.asscalar() if self.quantize_act_offline else self.current_act_max
         scale = max_ / (2 ** self.quantize_args.width - 1)
@@ -72,7 +72,8 @@ def gen_act_converter(width=8, quantize_act=True):
 
         m.origin_forward = m.hybrid_forward
         m.hybrid_forward = types.MethodType(_act_forward, m)
-        m.quantize_args = QuantizedArgs(enable=True, width=width, quantize_act=quantize_act)
+        m.quantize_args = QuantizedArgs(width=width, quantize_act=quantize_act)
+        m.enable_quantize = True
     return _converter
 
 

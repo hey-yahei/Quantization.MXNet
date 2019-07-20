@@ -37,6 +37,7 @@ import sys
 sys.path.append("..")
 from quantize import convert
 from quantize.initialize import qparams_init
+from quantize.kl_calibration import kl_calibrate
 
 __author__ = "YaHei"
 
@@ -83,6 +84,9 @@ def parse_args():
                         help='number of samples for every class in trainset. (default: 10)')
     parser.add_argument('--quantize-input-offline', action='store_true',
                         help='calibrate via EMA on trainset and quantize input offline.')
+    parser.add_argument('--calib-mode', type=str, default="naive",
+                        choices=['naive', 'kl'],
+                        help='how to calibrate inputs. (default: naive)')
     parser.add_argument('--calib-epoch', type=int, default=3,
                         help='number of epoches to calibrate via EMA on trainset. (default: 3)')
     parser.add_argument('--disable-cudnn-autotune', action='store_true',
@@ -282,31 +286,43 @@ if __name__ == "__main__":
 
     # calibrate for input ranges and evaluate for simulation
     if opt.quantize_input_offline:
-        for i in range(opt.calib_epoch):
-            net.quantize_online()
-            _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
-                         tqdm_desc="Calib[{}/{}]".format(i+1, opt.calib_epoch))
-            if opt.eval_per_calib:
-                net.quantize_input_offline()
-                acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False,
-                                        tqdm_desc="Eval[{}/{}]".format(i + 1, opt.calib_epoch))
-                print('*' * 25 + ' Calibration {:0>2} '.format(i+1) + '*' * 25)
-                print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
-                print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
-                print('*' * (25 * 2 + len(' Calibration 00 ')))
+        if opt.calib_mode == "kl":
+            print('*' * 25 + ' KL Calibration ' + '*' * 25)
+            net.disable_quantize()
+            input_levels = 2 ** ((opt.input_bits_width - 1) if opt.input_signed == "true" else opt.input_bits_width)
+            thresholds = kl_calibrate(net, train_loader, ctx, levels=input_levels)
+            for m, th in thresholds.items():
+                m.input_max.set_data(nd.array([th]))
+            net.enable_quantize()
+            print('*' * (25 * 2 + len(' KL Calibration ')))
+            print()
+        else:
+            for i in range(opt.calib_epoch):
+                net.quantize_online()
+                _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
+                             tqdm_desc="Calib[{}/{}]".format(i+1, opt.calib_epoch))
+                if opt.eval_per_calib:
+                    net.quantize_input_offline()
+                    acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False,
+                                            tqdm_desc="Eval[{}/{}]".format(i + 1, opt.calib_epoch))
+                    print('*' * 25 + ' Naive Calibration {:0>2} '.format(i+1) + '*' * 25)
+                    print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
+                    print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
+                    print('*' * (25 * 2 + len(' Naive Calibration 00 ')))
+                    print()
         if not opt.eval_per_calib:
             net.quantize_offline()
             acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
-            print()
             print('*' * 25 + ' Result ' + '*' * 25)
             print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
             print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
             print('*' * (25 * 2 + len(' Result ')))
+            print()
     else:
         net.quantize_online()
         acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
-        print()
         print('*'*25 + ' Result ' + '*'*25)
         print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
         print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
         print('*'*(25*2 + len(' Result ')))
+        print()

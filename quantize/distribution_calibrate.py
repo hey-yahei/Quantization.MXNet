@@ -21,12 +21,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import copy
 import numpy as np
+from tqdm import tqdm
 
-from mxnet import nd
-
-__all__ = ['kl_calibrate']
+__all__ = ['collect_feature_maps', 'kl_calibrate']
 __author__ = 'YaHei'
 
 
@@ -49,7 +47,7 @@ def _discrete_histogram(feature_maps, bins, max_=None):
     return hist.astype("float32"), max_
 
 
-def _collect_feature_maps(net, bins, loader, ctx):
+def collect_feature_maps(net, bins, loader, ctx, tqdm_desc="Collect FM"):
     quantized_blocks = net.collect_quantized_blocks()
 
     """ Add hooks to quantized blocks """
@@ -67,26 +65,27 @@ def _collect_feature_maps(net, bins, loader, ctx):
     """ Collect feature maps """
     fm_max_collector = {}
     hist_collector = {}
-    i = 0
-    for X, _ in loader:
-        i += 1
-        print(i)
-        X = X.as_in_context(ctx)
-        _ = net(X)
-        # Deal with feature maps data
-        for m, fm in fm_collector.items():
-            fm = np.concatenate(fm, axis=0)
-            fm_max = fm_max_collector.get(m, None)
-            hist, max_ = _discrete_histogram(fm, bins, fm_max)
-            # First chunk, set the max activation, times max_factor to make it redundant.
-            if fm_max is None:
-                fm_max_collector[m] = max_
-            # Update collectors
-            last_hist = hist_collector.get(m, 0)
-            hist_collector[m] = last_hist + hist
+    with tqdm(total=len(loader), desc=tqdm_desc) as pbar:
+        for X, _ in loader:
+            X = X.as_in_context(ctx)
+            _ = net(X)
+            # Deal with feature maps data
+            for m, fm in fm_collector.items():
+                fm = np.concatenate(fm, axis=0)
+                fm_max = fm_max_collector.get(m, None)
+                hist, max_ = _discrete_histogram(fm, bins, fm_max)
+                # First chunk, set the max activation, times max_factor to make it redundant.
+                if fm_max is None:
+                    fm_max_collector[m] = max_
+                # Update collectors
+                last_hist = hist_collector.get(m, 0)
+                hist_collector[m] = last_hist + hist
 
-        # reset collector
-        fm_collector.clear()
+            # reset collector
+            fm_collector.clear()
+
+            # update tqdm
+            pbar.update(1)
 
     """ Delete hooks """
     for h in hooks:
@@ -95,7 +94,7 @@ def _collect_feature_maps(net, bins, loader, ctx):
     return hist_collector, fm_max_collector
 
 
-def _kl_calibrate_once(data, levels, min_bins, bins):
+def kl_calibrate(data, levels, min_bins, bins):
     # Check
     assert min_bins >= levels, f"min_bins should be greater than levels ({min_bins} vs. {levels})"
 
@@ -107,35 +106,24 @@ def _kl_calibrate_once(data, levels, min_bins, bins):
         # ... P = [bin[0], bin[1], ..., bin[i-1]]
         # ... bin[i-1] += sum([bin[i], ..., bin[bins])
         # ... then normalize P
-        ref_distribution = copy.deepcopy(data[:i])
+        ref_distribution = np.copy(data[:i])
         ref_distribution[i-1] += sum(data[i:])
-        # ref_distribution /= sum(ref_distribution)
+        ref_distribution /= sum(ref_distribution)
 
         # Get candidate distribution
         # ... Q = quantize [bin[0], ..., bin[i-1]] to several levels
-        bin_idx = (levels * np.arange(i) / i).astype("int32")
+        bin_idx = (np.arange(i) * levels / i).astype("int32")
         cand_distribution = np.zeros(shape=levels)
         for j, idx in enumerate(bin_idx):
             cand_distribution[idx] += data[j]
-        # ... expand Q to i bins
-        cand_distribution_expand = np.zeros(shape=i)
-        bin_count = np.bincount(bin_idx, minlength=levels)
-        start_idx = 0
-        for j, count in enumerate(bin_count):
-            end_idx = start_idx + count
-            nonzero_mask = (data[start_idx:end_idx] != 0)
-            n_nonzero = sum(nonzero_mask)
-            # if P(x) == 0, also set Q(x) = 0
-            if n_nonzero == 0:
-                cand_distribution_expand[start_idx:end_idx] = 0
-            else:
-                cand_distribution_expand[start_idx:end_idx] = cand_distribution[j] / n_nonzero
-                cand_distribution_expand[start_idx:end_idx] *= nonzero_mask
-            start_idx = end_idx
+        # ... expand Q to i bins (linear interpolation)
+        bin_idx = np.arange(i) * levels / i
+        bin_idx_floor = bin_idx.astype("int32")
+        bin_idx_ceil = np.ceil(bin_idx).clip(0, levels-1).astype("int32")   # clip to avoid out of range
+        cand_distribution_expand = (cand_distribution[bin_idx_ceil] - cand_distribution[bin_idx_floor]) * \
+                                   (bin_idx - bin_idx_floor) + cand_distribution[bin_idx_floor]  # linear interpolation
+        cand_distribution_expand *= (ref_distribution != 0)     # if P(x) == 0, set Q(x) = 0 as well
         # ... then normalize Q_expand
-        print(i, sum(ref_distribution), sum(cand_distribution_expand))
-        exit()
-        # ref_distribution /= sum(ref_distribution)
         cand_distribution_expand /= sum(cand_distribution_expand)
 
         # Compute KL-divergence and search the least one (ignore zero-probability)
@@ -147,27 +135,3 @@ def _kl_calibrate_once(data, levels, min_bins, bins):
             best_bins = i
 
     return best_bins
-
-
-def _print(log_str, enable):
-    if enable:
-        print(log_str)
-
-
-def kl_calibrate(net, calib_loader, ctx, levels=128, min_bins=None, bins=2048, enable_log=True):
-    if min_bins is None:
-        min_bins = levels
-
-    _print("Collecting feature maps ...", enable_log)
-    hist_collector, fm_max_collector = _collect_feature_maps(net, bins, calib_loader, ctx)
-
-    thresholds = {}
-    quantized_blocks = net.collect_quantized_blocks()
-    n_quantized_blocks = len(quantized_blocks)
-    for i, m in enumerate(quantized_blocks):
-        best_bins = _kl_calibrate_once(hist_collector[m], levels, min_bins, bins)
-        thresholds[m] = (best_bins + 0.5) * (fm_max_collector[m] / bins)
-        _print(f"({i+1}/{n_quantized_blocks})Best threshold for {m.name}: {thresholds[m]}", enable_log)
-    _print("", enable_log)
-
-    return thresholds

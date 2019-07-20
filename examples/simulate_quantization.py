@@ -37,7 +37,7 @@ import sys
 sys.path.append("..")
 from quantize import convert
 from quantize.initialize import qparams_init
-from quantize.kl_calibration import kl_calibrate
+from quantize.distribution_calibrate import kl_calibrate, collect_feature_maps
 
 __author__ = "YaHei"
 
@@ -80,8 +80,8 @@ def parse_args():
                         help='number of preprocessing workers (default: 4)')
     parser.add_argument('--batch-size', type=int, default=128,
                         help='evaluate batch size per device (CPU/GPU). (default: 128)')
-    parser.add_argument('--num-sample', type=int, default=10,
-                        help='number of samples for every class in trainset. (default: 10)')
+    parser.add_argument('--num-sample', type=int, default=5,
+                        help='number of samples for every class in trainset. (default: 5)')
     parser.add_argument('--quantize-input-offline', action='store_true',
                         help='calibrate via EMA on trainset and quantize input offline.')
     parser.add_argument('--calib-mode', type=str, default="naive",
@@ -96,6 +96,9 @@ def parse_args():
     parser.add_argument('--exclude-first-conv', type=str, default="true",
                         choices=['false', 'true'],
                         help='exclude first convolution layer when quantize. (default: true)')
+    parser.add_argument('--fixed-random-seed', type=str, default="true",
+                        choices=['false', 'true'],
+                        help='set random_seed=7 for numpy to provide reproducibility. (default: true)')
     opt = parser.parse_args()
 
     if opt.list_models:
@@ -172,6 +175,9 @@ class UniformSampler(Sampler):
 
 if __name__ == "__main__":
     opt = parse_args()
+
+    if opt.fixed_random_seed == "true":
+        np.random.seed(7)
 
     if opt.disable_cudnn_autotune:
         import os
@@ -290,13 +296,25 @@ if __name__ == "__main__":
             print('*' * 25 + ' KL Calibration ' + '*' * 25)
             net.disable_quantize()
             input_levels = 2 ** ((opt.input_bits_width - 1) if opt.input_signed == "true" else opt.input_bits_width)
-            thresholds = kl_calibrate(net, train_loader, ctx, levels=input_levels)
+            min_bins, bins = input_levels, 2048
+            # collect feature maps
+            hist_collector, fm_max_collector = collect_feature_maps(net, bins=bins, loader=train_loader, ctx=ctx)
+            # do calibration
+            thresholds = {}
+            quantized_blocks = net.collect_quantized_blocks()
+            n_quantized_blocks = len(quantized_blocks)
+            for i, m in enumerate(quantized_blocks):
+                best_bins = kl_calibrate(hist_collector[m], levels=input_levels, min_bins=min_bins, bins=bins)
+                thresholds[m] = (best_bins + 0.5) * (fm_max_collector[m] / bins)
+                print(f"({i+1}/{n_quantized_blocks})\tBest threshold for {m.name}: {thresholds[m]}")
+            # update input_max
             for m, th in thresholds.items():
                 m.input_max.set_data(nd.array([th]))
             net.enable_quantize()
             print('*' * (25 * 2 + len(' KL Calibration ')))
             print()
         else:
+            print('*' * 25 + ' Naive Calibration ' + '*' * 25)
             for i in range(opt.calib_epoch):
                 net.quantize_online()
                 _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
@@ -305,11 +323,11 @@ if __name__ == "__main__":
                     net.quantize_input_offline()
                     acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False,
                                             tqdm_desc="Eval[{}/{}]".format(i + 1, opt.calib_epoch))
-                    print('*' * 25 + ' Naive Calibration {:0>2} '.format(i+1) + '*' * 25)
                     print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
                     print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
-                    print('*' * (25 * 2 + len(' Naive Calibration 00 ')))
                     print()
+            print('*' * (25 * 2 + len(' Naive Calibration ')))
+            print()
         if not opt.eval_per_calib:
             net.quantize_offline()
             acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)

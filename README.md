@@ -30,7 +30,7 @@ python simulate_quantization.py --model=mobilnet1.0
 * Only **min-max linear** range is supported yet.         
 * You can specify **bit-width** for input-quantization and weight-quantization.
 * Quantize input **online** and **offline** are both supported.
-* Only calibrate via update EMA for input_max on subset of trainset for input offline-quantization.
+* Calibrate via update EMA for input_max or KL-divergence on subset of trainset for input offline-quantization.
 * All pretrained models are provided by gluon-cv.
 * More usages see the help message. 
     ```bash
@@ -47,9 +47,11 @@ python simulate_quantization.py --model=mobilnet1.0
                                     [-j NUM_WORKERS] [--batch-size BATCH_SIZE]
                                     [--num-sample NUM_SAMPLE]
                                     [--quantize-input-offline]
+                                    [--calib-mode {naive,kl}]
                                     [--calib-epoch CALIB_EPOCH]
                                     [--disable-cudnn-autotune] [--eval-per-calib]
                                     [--exclude-first-conv {false,true}]
+                                    [--fixed-random-seed {false,true}]
     
     Simulate for quantization.
     
@@ -86,10 +88,12 @@ python simulate_quantization.py --model=mobilnet1.0
                             128)
       --num-sample NUM_SAMPLE
                             number of samples for every class in trainset.
-                            (default: 10)
+                            (default: 5)
       --quantize-input-offline
                             calibrate via EMA on trainset and quantize input
                             offline.
+      --calib-mode {naive,kl}
+                            how to calibrate inputs. (default: naive)
       --calib-epoch CALIB_EPOCH
                             number of epoches to calibrate via EMA on trainset.
                             (default: 3)
@@ -100,32 +104,42 @@ python simulate_quantization.py --model=mobilnet1.0
       --exclude-first-conv {false,true}
                             exclude first convolution layer when quantize.
                             (default: true)
+      --fixed-random-seed {false,true}
+                            set random_seed=7 for numpy to provide
+                            reproducibility. (default: true)
     ```    
 
 ### Results      
 | IN dtype | IN offline | WT dtype | WT qtype | Merge BN | w/o 1st conv | M-Top1 Acc | R-Top1 Acc |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | float32 | / | float32 | / |   | / | 73.28% | 77.36% |
-| uint8 |   | int8 | layer |   | √ | 70.84% | 76.92% |
-| uint8 |   | int8 | layer |   |   | 44.57% | 55.97% |
-| uint8 | √ | int8 | layer |   | √ | 70.85% | 76.99% |
-| int8 | √ | int8 | layer |   | √ | 70.15% | 76.88% |
-| int8 |   | int8 | layer | √ | √ | 15.21% | 76.62% |
-| int8 | √ | int8 | layer | √ | √ | 31.47% | 76.61% |
-| uint8 |   | int8 | channel |   | √ | 72.93% | 77.33% |
-| uint8 |   | int8 | channel |   |   | 47.80% | 56.21% |
-| uint8 | √ | int8 | channel |   | √ | 72.83% | 77.31% |
-| int8 | √ | int8 | channel |   | √ | 72.44% | 77.19% |
-| int8 |   | int8 | channel | √ | √ | 72.75% | 77.11% |
-| int8 | √ | int8 | channel | √ | √ | 71.57% | 76.72% |
+| uint8 | x | int8 | layer |   | √ | 70.84% | 76.92% |
+| uint8 | x | int8 | layer |   |   | 44.57% | 55.97% |
+| uint8 | naive | int8 | layer |   | √ | 70.92% | 76.90% |
+| int8 | naive | int8 | layer |   | √ | 70.58% | 76.81% |
+| uint8 | KL | int8 | layer |   | √ | 70.72% | 77.00% |
+| int8 | KL | int8 | layer |   | √ | 70.66% | 76.71% |
+| int8 | x | int8 | layer | √ | √ | 15.21% | 76.62% |
+| int8 | naive | int8 | layer | √ | √ | 32.70% | 76.61% |
+| int8 | KL | int8 | layer | √ | √ | 14.70% | 76.60% |
+| uint8 | x | int8 | channel |   | √ | 72.93% | 77.33% |
+| uint8 | x | int8 | channel |   |   | 47.80% | 56.21% |
+| uint8 | naive | int8 | channel |   | √ | 72.85% | 77.31% |
+| int8 | naive | int8 | channel |   | √ | 72.63% | 77.22% |
+| uint8 | KL | int8 | channel |   | √ | 72.68% | 77.35% |
+| int8 | KL | int8 | channel |   | √ | 72.68% | 77.08% |
+| int8 | x | int8 | channel | √ | √ | 72.75% | 77.11% |
+| int8 | naive | int8 | channel | √ | √ | 72.04% | 76.69% |
+| int8 | KL | int8 | channel | √ | √ | 72.67% | 77.07% |
 
 * **IN**: INput, **WT**: WeighT
 * **M-Top1 Acc**: Top-1 Acc of MobileNetv1-1.0, **R-Top1 Acc**: Top-1 Acc of ResNet50-v1
 * Inputs is usually quantized into unsigned int with one-side distribution since outputs of ReLU >= 0.
-* When quantize inputs offline, the range of input is calibrated thrice on subset of trainset, which contains 10000 
-images(10 per class).    
+* When quantize inputs offline, the range of input is calibrated thrice on subset of trainset, which contains 5000 
+images(5 per class).    
 * Merge BatchNorm before quantization seams terrible for per-layer because some `max(abs(weight))` would be much larger after merge bn.
 * Convolutions and FullyConnections are both quantized.
+* Without fake_bn, calibrate input_max via EMA and KL-divergence both recover acc well. But with fake_bn, calibrate via KL-divergence seems better than EMA. 
 
 ## Quantization Aware Training
 Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) with the implement of MXNet.

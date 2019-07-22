@@ -47,10 +47,11 @@ def _act_forward(self, F, x, act_max=None):
 
     # Simulate quantization
     if self.enable_quantize and self.quantize_args.quantize_act:
-        self.current_act_max = F.max(act).asscalar()
-        max_ = act_max.asscalar() if self.quantize_act_offline else self.current_act_max
-        scale = max_ / (2 ** self.quantize_args.width - 1)
-        act = (act.clip(0., max_) / scale).round() * scale
+        self.current_act_max = F.max(act, axis=(1, 2, 3)).mean().asscalar()
+        if self.quantize_act:
+            max_ = act_max.asscalar() if self.quantize_act_offline else self.current_act_max
+            scale = max_ / (2 ** self.quantize_args.width - 1)
+            act = (act.clip(0., max_) / scale).round() * scale
 
     return act
 

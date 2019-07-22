@@ -38,6 +38,7 @@ QuantizedArgs = namedtuple("ConvQuantizedArgs",
                            "wt_width quant_type "
                            "fake_bn")
 
+
 def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
                     gamma=None, beta=None, running_mean=None, running_var=None):
     # Fake bn
@@ -50,14 +51,15 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
     if self.enable_quantize:
         # Quantize input
         if self.quantize_args.quantize_input:
-            self.current_input_max = F.max(F.abs(x), axis=(0, 2, 3)).mean().asscalar()
-            max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
-            if self.quantize_args.in_signed:
-                in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
-            else:
-                in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
-            # x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
-            x = LinearQuantizeSTE(in_scale, max_)(x)
+            self.current_input_max = F.max(F.abs(x), axis=(1, 2, 3)).mean().asscalar()
+            if self.quantize_input:
+                max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
+                if self.quantize_args.in_signed:
+                    in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+                else:
+                    in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
+                # x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
+                x = LinearQuantizeSTE(in_scale, max_)(x)
 
         # Simulate quantization for weight
         if self.quantize_args.quant_type == 'channel':
@@ -72,13 +74,13 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
             max_ = weight.abs().reshape((num, -1)).max(axis=1)
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             wt_scale = wt_scale.reshape((num, 1, 1, 1))
-            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-            weight_q = LinearQuantizeSTE(wt_scale)(weight)
+            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            # weight_q = LinearQuantizeSTE(wt_scale)(weight)
         else:
             max_ = weight.abs().max()
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-            weight_q = LinearQuantizeSTE(wt_scale)(weight)
+            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            # weight_q = LinearQuantizeSTE(wt_scale)(weight)
     else:
         weight_q = weight
 
@@ -130,6 +132,7 @@ def _add_fake_bn_ema_hook(m):
         diff_square = (y - m.current_mean.reshape(1,-1,1,1)) ** 2
         m.current_var = ( diff_square.sum(axis=(2,3)).sum(axis=0) ) / num_samples
     m.register_forward_pre_hook(_ema_hook)
+
 
 def gen_conv2d_converter(weight_width=8, quant_type="layer",
                          quantize_input=True, input_signed=False, input_width=8,

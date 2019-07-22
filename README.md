@@ -39,7 +39,7 @@ python simulate_quantization.py --model=mobilnet1.0
                                     [--list-models] [--use-gpu USE_GPU]
                                     [--dataset {imagenet,cifar10}] [--use-gn]
                                     [--batch-norm] [--use-se] [--last-gamma]
-                                    [--fake-bn]
+                                    [--merge-bn]
                                     [--weight-bits-width WEIGHT_BITS_WIDTH]
                                     [--input-signed INPUT_SIGNED]
                                     [--input-bits-width INPUT_BITS_WIDTH]
@@ -51,7 +51,7 @@ python simulate_quantization.py --model=mobilnet1.0
                                     [--calib-epoch CALIB_EPOCH]
                                     [--disable-cudnn-autotune] [--eval-per-calib]
                                     [--exclude-first-conv {false,true}]
-                                    [--fixed-random-seed {false,true}]
+                                    [--fixed-random-seed FIXED_RANDOM_SEED]
     
     Simulate for quantization.
     
@@ -70,7 +70,8 @@ python simulate_quantization.py --model=mobilnet1.0
       --use-se              use SE layers or not in resnext. default is false.
       --last-gamma          whether to init gamma of the last BN layer in each
                             bottleneck to 0.
-      --fake-bn             use fake batchnorm or not.
+      --merge-bn            merge batchnorm into convolution or not. (default:
+                            False)
       --weight-bits-width WEIGHT_BITS_WIDTH
                             bits width of weight to quantize into.
       --input-signed INPUT_SIGNED
@@ -104,9 +105,9 @@ python simulate_quantization.py --model=mobilnet1.0
       --exclude-first-conv {false,true}
                             exclude first convolution layer when quantize.
                             (default: true)
-      --fixed-random-seed {false,true}
-                            set random_seed=7 for numpy to provide
-                            reproducibility. (default: true)
+      --fixed-random-seed FIXED_RANDOM_SEED
+                            set random_seed for numpy to provide reproducibility.
+                            (default: 7)
     ```    
 
 ### Results      
@@ -139,7 +140,21 @@ python simulate_quantization.py --model=mobilnet1.0
 images(5 per class).    
 * Merge BatchNorm before quantization seams terrible for per-layer because some `max(abs(weight))` would be much larger after merge bn.
 * Convolutions and FullyConnections are both quantized.
-* Without fake_bn, calibrate input_max via EMA and KL-divergence both recover acc well. But with fake_bn, calibrate via KL-divergence seems better than EMA. 
+* Without fake_bn, calibrate input_max via EMA and KL-divergence both recover acc well. But with fake_bn, calibrate via KL-divergence seems better than EMA.
+
+#### Compare naive-calibration and KL-calibration  
+Tested Model: cifar_resnet56_v1 (MERGE BN)
+
+| IN dtype | WT dtype | WT qtype | Merge BN | w/o 1st conv | Top1 Acc@naive | Top1 Acc@KL |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| float32 | float32 | / |   | / | 93.60% | 93.60% |
+| uint6 | int6 | channel | √ | √ | 93.09% | 93.83% |
+| uint5 | int5 | channel | √ | √ | 92.71% | 93.29% |
+| uint4 | int4 | channel | √ | √ | 91.62% | 89.27% |
+| uint3 | int3 | channel | √ | √ | 81.75% | 55.98% |
+
+It seems that KL-divergence calibration performs terrible when quantize into very low-bit, and naive-calibration may be much better at this time.    
+
 
 ## Quantization Aware Training
 Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) with the implement of MXNet.
@@ -228,23 +243,24 @@ To help freeze gluon models to symbol, **FreezeHelper** is provided.
 -->   
  
 ### Results    
-I've tested mobilenet_v1_1.0 with `Adam` optimizer and no augments on ImageNet(ILSVRC2012) dataset.    
+
+#### Retrain low-bit quantized cifar_resnet56_v1
+I've tested cifar_resnet56_v1 with `Adam`(lr=1e-6) optimizer and the same augments as gluoncv on CIFAR10 dataset.    
         
 | DataType   | QuantType | Offline | Retrain | FakeBN | Top-1 Acc |
 | :---:      | :---:     | :---:   | :---:   | :---:  | :---:     |
-| float32    | / | / | / | / | 73.28% |
-| int8/uint8 | layer |   |   |   | 70.85% |
-| int8/uint8 | layer |   | √ |   | 73.01% |
-| int8/uint8 | layer | √ |   |   | 70.90% |
-| int8/uint8 | layer | √ | √ |   | 73.04% |
-| int8/int8 | channel | √ |   | √ | 71.57% |
-| int8/int8 | channel | √ | √ | √ | 72.46% |
+| fp32/fp32    | / | / | / | / | [93.60%](https://gluon-cv.mxnet.io/model_zoo/classification.html#cifar10) |
+| uint4/int4 | layer | naive |   | √ | [84.95%](scripts/simulate_quantization.md#c10_r56_uint4_int4_layer_merge_naive) |
+| uint4/int4 | layer | KL |  | √ | [73.36%](scripts/simulate_quantization.md#c10_r56_uint4_int4_layer_merge_kl) |
+| uint4/int4 | layer | √ | √ | √ | 87.41% |
+| uint4/int4 | channel | naive |   | √ | [91.62%](scripts/simulate_quantization.md#uc10_r56_int4_int4_channel_merge_naive) |
+| uint4/int4 | channel | KL |  | √ | [89.27%](scripts/simulate_quantization.md#c10_r56_uint4_int4_channel_merge_kl) |
+| uint4/int4 | channel | √ | √ | √ | 92.56% |
 
 * The first convolution layer is excluded when quantize.
-* Weights are quantized into int8 while inputs int8/uint8.
-* No matter whether quantize inputs offline or not, the accuracy can be recovered well via retrain. 
-* Only a subset of trainset which contains 10000 images(10 for per class) is used when retrain the net.   
-* Retraining seams not very useful for per-channel quantization but a little benefit for fake bn.
+* Weights are quantized into int4 while inputs uint4. 
+* Only subset of trainset which contained 5000 images (500 per class) is used when calibrate.
+ 
    
 ### Deploy to third-party platform
 #### [Tengine](https://github.com/OAID/Tengine)

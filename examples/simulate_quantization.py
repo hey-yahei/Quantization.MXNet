@@ -225,7 +225,8 @@ if __name__ == "__main__":
         ),
         # nn.Activation: convert.gen_act_converter(
         #     quantize_act=True,
-        #     width=opt.input_bits_width
+        #     width=opt.input_bits_width,
+        #     global_max=opt.calib_global_max
         # ),
         nn.Activation: None,
         nn.BatchNorm: convert.bypass_bn if opt.merge_bn else None
@@ -290,7 +291,8 @@ if __name__ == "__main__":
     if opt.quantize_input_offline:
         if opt.calib_mode == "kl":
             print('*' * 25 + ' KL Calibration ' + '*' * 25)
-            net.disable_quantize()
+            net.disable_quantize()      # calibrate with fp32_input and fp32_weight inference
+            # net.quantize_input(enable=False)    # calibrate with fp32_input and int_weight inference
             input_levels = 2 ** ((opt.input_bits_width - 1) if opt.input_signed == "true" else opt.input_bits_width)
             min_bins, bins = input_levels, 2048
             # collect feature maps
@@ -312,7 +314,8 @@ if __name__ == "__main__":
         else:
             print('*' * 25 + ' Naive Calibration ' + '*' * 25)
             for i in range(opt.calib_epoch):
-                net.quantize_input(enable=False)
+                # net.quantize_input(enable=False)    # calibrate with fp32_input and int_weight inference
+                net.quantize_input(enable=True, online=True)    # calibrate with int_input and int_weight inference
                 _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
                              tqdm_desc="Calib[{}/{}]".format(i+1, opt.calib_epoch))
                 if opt.eval_per_calib:
@@ -322,6 +325,8 @@ if __name__ == "__main__":
                     print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
                     print('{0: <8}: {1:2.2f}%'.format('avg_acc', avg_acc * 100))
                     print()
+            for m in net.collect_quantized_blocks():
+                print(f"Best threshold for {m.name}: {m.input_max.data().asscalar()}")
             print('*' * (25 * 2 + len(' Naive Calibration ')))
             print()
         if not opt.eval_per_calib:

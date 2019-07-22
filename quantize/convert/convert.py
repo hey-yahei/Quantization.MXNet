@@ -94,11 +94,11 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
             if type(qblocks) in (nn.Dense, nn.Conv2D):
                 assert (not enable) or qblocks.quantize_args.quantize_input
                 qblocks.quantize_input = enable
-                qblocks.quantize_input_offline = online
+                qblocks.quantize_input_offline = not online
             elif type(qblocks) == nn.Activation:
                 assert (not enable) or qblocks.quantize_args.quantize_act
                 qblocks.quantize_act = enable
-                qblocks.quantize_act_offline = online
+                qblocks.quantize_act_offline = not online
     net.quantize_input = types.MethodType(_quantize_input, net)
 
     # Add method to control enable/disable quantization

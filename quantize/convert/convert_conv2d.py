@@ -27,6 +27,8 @@ from collections import namedtuple
 from mxnet import nd
 from mxnet.gluon.nn import Conv2D
 
+from .ste_func import LinearQuantizeSTE
+
 __all__ = ['gen_conv2d_converter']
 __author__ = "YaHei"
 
@@ -42,20 +44,20 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
     if self.quantize_args.fake_bn:
         w_shape = weight.shape
         cout = w_shape[0]
-        weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / F.sqrt(running_var + 1e-10).reshape(-1, 1)).reshape(
-            w_shape)
+        weight = (weight.reshape(cout, -1) * gamma.reshape(-1, 1) / F.sqrt(running_var + 1e-10).reshape(-1, 1)).reshape(w_shape)
         bias = gamma * (bias - running_mean) / F.sqrt(running_var + 1e-10) + beta
 
     if self.enable_quantize:
         # Quantize input
         if self.quantize_args.quantize_input:
-            self.current_input_max = F.max(F.abs(x)).asscalar()
+            self.current_input_max = F.max(F.abs(x), axis=(0, 2, 3)).mean().asscalar()
             max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
             if self.quantize_args.in_signed:
                 in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
             else:
                 in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
-            x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
+            # x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
+            x = LinearQuantizeSTE(in_scale, max_)(x)
 
         # Simulate quantization for weight
         if self.quantize_args.quant_type == 'channel':
@@ -63,17 +65,20 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
             max_ = weight.abs().reshape((num, -1)).max(axis=1)
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             wt_scale = wt_scale.reshape((num, 1, 1, 1))
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
         elif self.quantize_args.quant_type == 'group':
             num = self._kwargs['num_group']
             max_ = weight.abs().reshape((num, -1)).max(axis=1)
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             wt_scale = wt_scale.reshape((num, 1, 1, 1))
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
         else:
             max_ = weight.abs().max()
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
     else:
         weight_q = weight
 
@@ -142,4 +147,5 @@ def gen_conv2d_converter(weight_width=8, quant_type="layer",
         m.quantize_args = QuantizedArgs(in_signed=input_signed, in_width=input_width, wt_width=weight_width,
                                         quantize_input=quantize_input, fake_bn=fake_bn, quant_type=quant_type)
         m.enable_quantize = True
+        m.quantize_input = quantize_input
     return _converter

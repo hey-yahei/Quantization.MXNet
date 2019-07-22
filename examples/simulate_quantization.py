@@ -312,11 +312,11 @@ if __name__ == "__main__":
         else:
             print('*' * 25 + ' Naive Calibration ' + '*' * 25)
             for i in range(opt.calib_epoch):
-                net.quantize_online()
+                net.quantize_input(enable=False)
                 _ = evaluate(net, classes, train_loader, ctx=ctx, update_ema=True,
                              tqdm_desc="Calib[{}/{}]".format(i+1, opt.calib_epoch))
                 if opt.eval_per_calib:
-                    net.quantize_input_offline()
+                    net.quantize_input(enable=True, online=False)
                     acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False,
                                             tqdm_desc="Eval[{}/{}]".format(i + 1, opt.calib_epoch))
                     print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
@@ -325,7 +325,7 @@ if __name__ == "__main__":
             print('*' * (25 * 2 + len(' Naive Calibration ')))
             print()
         if not opt.eval_per_calib:
-            net.quantize_offline()
+            net.quantize_input(enable=True, online=False)
             acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
             print('*' * 25 + ' Result ' + '*' * 25)
             print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))
@@ -333,7 +333,7 @@ if __name__ == "__main__":
             print('*' * (25 * 2 + len(' Result ')))
             print()
     else:
-        net.quantize_online()
+        net.quantize_input(enable=True, online=True)
         acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
         print('*'*25 + ' Result ' + '*'*25)
         print('{0: <8}: {1:2.2f}%'.format('acc', acc * 100))

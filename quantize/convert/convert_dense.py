@@ -26,6 +26,8 @@ from collections import namedtuple
 
 from mxnet.gluon.nn import Dense
 
+from .ste_func import LinearQuantizeSTE
+
 __all__ = ['gen_dense_converter']
 __author__ = 'YaHei'
 
@@ -39,10 +41,11 @@ def _dense_forward(self, F, x, weight, bias=None, input_max=None):
             self.current_input_max = F.max(F.abs(x)).asscalar()
             max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
             if self.quantize_args.in_signed:
-                scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
+                in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
             else:
-                scale = max_ / (2 ** self.quantize_args.in_width - 1)
-            x = (x.clip(0., max_) / (scale + 1e-10)).round() * scale
+                in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
+            # x = (x.clip(0., max_) / (scale + 1e-10)).round() * in_scale
+            x = LinearQuantizeSTE(in_scale, max_)(x)
 
         # Simulate quantization for weight
         if self.quantize_args.quant_type == 'channel':
@@ -50,11 +53,13 @@ def _dense_forward(self, F, x, weight, bias=None, input_max=None):
             max_ = weight.abs().reshape((num, -1)).max(axis=1)
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             wt_scale = wt_scale.reshape((num, 1))
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
         else:
             max_ = weight.abs().max()
-            scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-            weight_q = (weight / (scale + 1e-10)).round() * scale
+            wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
     else:
         weight_q = weight
 
@@ -87,4 +92,5 @@ def gen_dense_converter(weight_width=8, input_signed=False, input_width=8, quant
         m.quantize_args = QuantizedArgs(in_signed=input_signed, in_width=input_width, wt_width=weight_width,
                                         quantize_input=quantize_input, quant_type=quant_type)
         m.enable_quantize = True
+        m.quantize_input = quantize_input
     return _converter

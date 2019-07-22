@@ -74,6 +74,7 @@ def gen_act_converter(width=8, quantize_act=True):
         m.hybrid_forward = types.MethodType(_act_forward, m)
         m.quantize_args = QuantizedArgs(width=width, quantize_act=quantize_act)
         m.enable_quantize = True
+        m.quantize_act = quantize_act
     return _converter
 
 

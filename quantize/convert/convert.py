@@ -89,20 +89,17 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
     net.collect_quantized_blocks = types.MethodType(_collect_quantized_blocks, net)
 
     # Add method to control the mode of input quantization as online or offline
-    def _quantize_offline(self):
+    def _quantize_input(self, enable=True, online=True):
         for qblocks in self.collect_quantized_blocks():
             if type(qblocks) in (nn.Dense, nn.Conv2D):
-                qblocks.quantize_input_offline = True
+                assert (not enable) or qblocks.quantize_args.quantize_input
+                qblocks.quantize_input = enable
+                qblocks.quantize_input_offline = online
             elif type(qblocks) == nn.Activation:
-                qblocks.quantize_act_offline = True
-    def _quantize_online(self):
-        for qblocks in self.collect_quantized_blocks():
-            if type(qblocks) in (nn.Dense, nn.Conv2D):
-                qblocks.quantize_input_offline = False
-            elif type(qblocks) == nn.Activation:
-                qblocks.quantize_act_offline = False
-    net.quantize_offline = types.MethodType(_quantize_offline, net)
-    net.quantize_online = types.MethodType(_quantize_online, net)
+                assert (not enable) or qblocks.quantize_args.quantize_act
+                qblocks.quantize_act = enable
+                qblocks.quantize_act_offline = online
+    net.quantize_input = types.MethodType(_quantize_input, net)
 
     # Add method to control enable/disable quantization
     def _enable_quantize(self):

@@ -184,10 +184,9 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     trainer.step(batch_size)
     # trainer.step(batch_size, ignore_stale_grad=True)   # if bypass bn
     ```
-    What's more, you can also switch quantize online/offline as follow:     
+    What's more, you can also switch enable/disable quantize input online/offline as follow:     
     ```python
-    net.quantize_online()
-    net.quantize_offline()
+    net.quantize_input(enable=True, online=True)
     ```
     or enable/disable quantization --      
     ```python

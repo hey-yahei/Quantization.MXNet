@@ -96,9 +96,8 @@ def parse_args():
     parser.add_argument('--exclude-first-conv', type=str, default="true",
                         choices=['false', 'true'],
                         help='exclude first convolution layer when quantize. (default: true)')
-    parser.add_argument('--fixed-random-seed', type=str, default="true",
-                        choices=['false', 'true'],
-                        help='set random_seed=7 for numpy to provide reproducibility. (default: true)')
+    parser.add_argument('--fixed-random-seed', type=int, default=7,
+                        help='set random_seed for numpy to provide reproducibility. (default: 7)')
     opt = parser.parse_args()
 
     if opt.list_models:
@@ -176,8 +175,8 @@ class UniformSampler(Sampler):
 if __name__ == "__main__":
     opt = parse_args()
 
-    if opt.fixed_random_seed == "true":
-        np.random.seed(7)
+    # set random_seed for numpy
+    np.random.seed(opt.fixed_random_seed)
 
     if opt.disable_cudnn_autotune:
         import os

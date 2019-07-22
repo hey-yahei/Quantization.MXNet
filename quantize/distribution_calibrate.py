@@ -30,9 +30,9 @@ __author__ = 'YaHei'
 
 def _discrete_histogram(feature_maps, bins, max_=None):
     # Check min and max
-    assert np.min(feature_maps) >= 0., "Activation should >=0"
     if max_ is None:
         max_ = np.max(feature_maps)
+    assert np.min(feature_maps) >= 0., "Activation should >=0"
     assert max_ > 0, "Bad distribution: all zero-value"
 
     # Clip and quantize
@@ -48,6 +48,28 @@ def _discrete_histogram(feature_maps, bins, max_=None):
 
 
 def collect_feature_maps(net, bins, loader, ctx, tqdm_desc="Collect FM"):
+    """
+    Collect feature maps and record discrete histograms.
+    :param net: mxnet.gluon.block.HybridBlock
+        Net
+    :param bins: int
+        Number of bins to generate discrete histograms.
+    :param loader: mxnet.gluon.data.dataloader.DataLoader
+        Dataloader for calib_dataset (subset of trainset usually)
+    :param ctx: mxnet.context
+        Context for data to store.
+    :param tqdm_desc: str
+        Description for tqdm.
+    :return: (hist_collector, fm_max_collector)
+        hist_collector: dict with (block, histogram) key-value pairs
+            Collector to store discrete histogram for quantized blocks.
+            block: mxnet.gluon.block.HybridBlock
+            histogram: numpy.ndarray with 1-D shape
+        fm_max_collector: dict with (block, max) key-value pairs
+            Collector to store max_input for quantized blocks.
+            block: mxnet.gluon.block.HybridBlock
+            histogram: int
+    """
     quantized_blocks = net.collect_quantized_blocks()
 
     """ Add hooks to quantized blocks """
@@ -80,10 +102,8 @@ def collect_feature_maps(net, bins, loader, ctx, tqdm_desc="Collect FM"):
                 # Update collectors
                 last_hist = hist_collector.get(m, 0)
                 hist_collector[m] = last_hist + hist
-
             # reset collector
             fm_collector.clear()
-
             # update tqdm
             pbar.update(1)
 
@@ -95,6 +115,19 @@ def collect_feature_maps(net, bins, loader, ctx, tqdm_desc="Collect FM"):
 
 
 def kl_calibrate(data, levels, min_bins, bins):
+    """
+    KL-divergence calibration for offline-quantization
+    :param data: numpy.ndarray
+        Discrete histogram for activation data.
+    :param levels: int
+        Number of levels to quantize into.
+    :param min_bins: int
+        Minimal number of bins to search (should be >=levels).
+    :param bins: int
+        Maximal number of bins to search.
+    :return: int
+        Best threshold.
+    """
     # Check
     assert min_bins >= levels, f"min_bins should be greater than levels ({min_bins} vs. {levels})"
 

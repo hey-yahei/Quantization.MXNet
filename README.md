@@ -113,20 +113,20 @@ python simulate_quantization.py --model=mobilnet1.0
 | IN dtype | IN offline | WT dtype | WT qtype | Merge BN | w/o 1st conv | M-Top1 Acc | R-Top1 Acc |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | float32 | / | float32 | / |   | / | 73.28% | 77.36% |
-| uint8 | x | int8 | layer |   | √ | 70.84% | 76.92% |
 | uint8 | x | int8 | layer |   |   | 44.57% | 55.97% |
+| uint8 | x | int8 | layer |   | √ | 70.84% | 76.92% |
 | uint8 | naive | int8 | layer |   | √ | 70.92% | 76.90% |
-| int8 | naive | int8 | layer |   | √ | 70.58% | 76.81% |
 | uint8 | KL | int8 | layer |   | √ | 70.72% | 77.00% |
+| int8 | naive | int8 | layer |   | √ | 70.58% | 76.81% |
 | int8 | KL | int8 | layer |   | √ | 70.66% | 76.71% |
 | int8 | x | int8 | layer | √ | √ | 15.21% | 76.62% |
 | int8 | naive | int8 | layer | √ | √ | 32.70% | 76.61% |
 | int8 | KL | int8 | layer | √ | √ | 14.70% | 76.60% |
-| uint8 | x | int8 | channel |   | √ | 72.93% | 77.33% |
 | uint8 | x | int8 | channel |   |   | 47.80% | 56.21% |
+| uint8 | x | int8 | channel |   | √ | 72.93% | 77.33% |
 | uint8 | naive | int8 | channel |   | √ | 72.85% | 77.31% |
-| int8 | naive | int8 | channel |   | √ | 72.63% | 77.22% |
 | uint8 | KL | int8 | channel |   | √ | 72.68% | 77.35% |
+| int8 | naive | int8 | channel |   | √ | 72.63% | 77.22% |
 | int8 | KL | int8 | channel |   | √ | 72.68% | 77.08% |
 | int8 | x | int8 | channel | √ | √ | 72.75% | 77.11% |
 | int8 | naive | int8 | channel | √ | √ | 72.04% | 76.69% |
@@ -184,10 +184,15 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     trainer.step(batch_size)
     # trainer.step(batch_size, ignore_stale_grad=True)   # if bypass bn
     ```
-    What's more, you can also switch quantize online or offline as follow:     
+    What's more, you can also switch quantize online/offline as follow:     
     ```python
     net.quantize_online()
     net.quantize_offline()
+    ```
+    or enable/disable quantization --      
+    ```python
+    net.enable_quantize()
+    net.disable_quantize()
     ```
     
 <!--

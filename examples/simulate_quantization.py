@@ -65,8 +65,8 @@ def parse_args():
                         help='use SE layers or not in resnext. default is false.')
     parser.add_argument('--last-gamma', action='store_true',
                         help='whether to init gamma of the last BN layer in each bottleneck to 0.')
-    parser.add_argument('--fake-bn', action='store_true',
-                        help='use fake batchnorm or not.')
+    parser.add_argument('--merge-bn', action='store_true',
+                        help='merge batchnorm into convolution or not. (default: False)')
     parser.add_argument('--weight-bits-width', type=int, default=8,
                         help='bits width of weight to quantize into.')
     parser.add_argument('--input-signed', type=str, default="false",
@@ -199,8 +199,7 @@ if __name__ == "__main__":
     if opt.last_gamma:
         kwargs['last_gamma'] = True
     net = get_model(model_name, **kwargs)
-    # from quantize.freeze import merge_bn
-    # merge_bn(net, exclude=[])
+
     if opt.print_model:
         print('*'*25 + ' ' + opt.model + ' ' + '*'*25)
         print(net)
@@ -211,7 +210,7 @@ if __name__ == "__main__":
     convert_fn = {
         nn.Conv2D: convert.gen_conv2d_converter(
             quantize_input=True,
-            fake_bn=opt.fake_bn,
+            fake_bn=opt.merge_bn,
             input_signed=opt.input_signed == 'true',
             weight_width=opt.weight_bits_width,
             input_width=opt.input_bits_width,
@@ -229,23 +228,21 @@ if __name__ == "__main__":
         #     width=opt.input_bits_width
         # ),
         nn.Activation: None,
-        nn.BatchNorm: convert.bypass_bn if opt.fake_bn else None
+        nn.BatchNorm: convert.bypass_bn if opt.merge_bn else None
     }
     exclude_blocks = []
     if opt.exclude_first_conv == 'true':
-        exclude_blocks.append(net.features[0])
+        exclude_blocks.extend([net.features[0], net.features[1]])
     if model_name.startswith('mobilenetv2_'):
         exclude_blocks.append(net.output[0])
-    if opt.fake_bn:
-        block = net.features[1]
-        if isinstance(block, nn.BatchNorm):
-            exclude_blocks.append(block)
+    if model_name.startswith('cifar_resnet'):
+        exclude_blocks.extend([net.features[2][0].body[0], net.features[2][0].body[1]])
     print('*'*25 + ' Exclude blocks ' + '*'*25)
     for b in exclude_blocks:
         print(b.name)
     print('*'*(25*2 + len(' Exclude blocks ')))
     print()
-    convert.convert_model(net, exclude=exclude_blocks, convert_fn=convert_fn)
+    convert.convert_model(net, exclude=exclude_blocks, convert_fn=convert_fn, )
 
     # initialize for quantization parameters and reset context
     qparams_init(net)

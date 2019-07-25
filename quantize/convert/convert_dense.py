@@ -45,8 +45,8 @@ def _dense_forward(self, F, x, weight, bias=None, input_max=None):
                     in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
                 else:
                     in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
-                x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
-                # x = LinearQuantizeSTE(in_scale, max_)(x)
+                # x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
+                x = LinearQuantizeSTE(in_scale, max_)(x)
 
         # Simulate quantization for weight
         if self.quantize_args.quant_type == 'channel':
@@ -54,13 +54,13 @@ def _dense_forward(self, F, x, weight, bias=None, input_max=None):
             max_ = weight.abs().reshape((num, -1)).max(axis=1)
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             wt_scale = wt_scale.reshape((num, 1))
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-            # weight_q = LinearQuantizeSTE(wt_scale)(weight)
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
         else:
             max_ = weight.abs().max()
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-            # weight_q = LinearQuantizeSTE(wt_scale)(weight)
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
     else:
         weight_q = weight
 

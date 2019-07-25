@@ -252,16 +252,15 @@ I've tested cifar_resnet56_v1 with `Adam`(lr=1e-6) optimizer and the same augmen
 | fp32/fp32    | / | / | / | / | [93.60%](https://gluon-cv.mxnet.io/model_zoo/classification.html#cifar10) |
 | uint4/int4 | layer | naive |   | √ | [84.95%](examples/scripts/simulate_quantization.md#c10_r56_uint4_int4_layer_merge_naive) |
 | uint4/int4 | layer | KL |  | √ | [73.36%](examples/scripts/simulate_quantization.md#c10_r56_uint4_int4_layer_merge_kl) |
-| uint4/int4 | layer | √ | √ | √ | 87.41% |
+| uint4/int4 | layer | √ | √ | √ | 90.77% |
 | uint4/int4 | channel | naive |   | √ | [91.62%](examples/scripts/simulate_quantization.md#uc10_r56_int4_int4_channel_merge_naive) |
 | uint4/int4 | channel | KL |  | √ | [89.27%](examples/scripts/simulate_quantization.md#c10_r56_uint4_int4_channel_merge_kl) |
-| uint4/int4 | channel | √ | √ | √ | 92.56% |
+| uint4/int4 | channel | √ | √ | √ | 93.19% |
 
 * The first convolution layer is excluded when quantize.
 * Weights are quantized into int4 while inputs uint4. 
 * Only subset of trainset which contained 5000 images (500 per class) is used when calibrate.
  
-   https://github.com/hey-yahei/Quantization.MXNet/blob/master/examples/scripts/simulate_quantization.md#c10_r56_uint4_int4_layer_merge_naive
 ### Deploy to third-party platform
 #### [Tengine](https://github.com/OAID/Tengine)
 Tengine support int8-inference for explorer version, you can just export gluon model to mxnet model(with a `.json` file and a `.param` file) with float32 parameters. Tengine will parse it and use int8-inference online automatically.       
@@ -281,4 +280,6 @@ Note that, in ncnn,
    
 ---------------------        
    
-***More details refer to 《[MXNet上的重训练量化 | Hey~YaHei!](http://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)》.***
+***More details refer to***
+1. (2019.01.23) [MXNet上的重训练量化 | Hey~YaHei!](https://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)    
+2. (2019.07.23) [线性量化 | Hey~YaHei](https://hey-yahei.cn/2019/07/23/Quantization/)

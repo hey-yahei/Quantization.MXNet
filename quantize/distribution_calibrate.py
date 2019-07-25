@@ -117,6 +117,7 @@ def collect_feature_maps(net, bins, loader, ctx, tqdm_desc="Collect FM"):
 def kl_calibrate(data, levels, min_bins, bins):
     """
     KL-divergence calibration for offline-quantization
+    Reference: http://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
     :param data: numpy.ndarray
         Discrete histogram for activation data.
     :param levels: int

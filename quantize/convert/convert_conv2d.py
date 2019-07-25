@@ -74,13 +74,13 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
             max_ = weight.abs().reshape((num, -1)).max(axis=1)
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
             wt_scale = wt_scale.reshape((num, 1, 1, 1))
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-            # weight_q = LinearQuantizeSTE(wt_scale)(weight)
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
         else:
             max_ = weight.abs().max()
             wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
-            weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
-            # weight_q = LinearQuantizeSTE(wt_scale)(weight)
+            # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
+            weight_q = LinearQuantizeSTE(wt_scale)(weight)
     else:
         weight_q = weight
 
@@ -128,9 +128,9 @@ def _add_fake_bn_ema_hook(m):
         bias = nd.zeros(shape=weight.shape[0], ctx=weight.context) if m.bias is None else m.bias.data()
         y = nd.Convolution(x, weight, bias, **m._kwargs)
         num_samples = y.shape[0] * y.shape[2] * y.shape[3]
-        m.current_mean = ( y.sum(axis=(2,3)).sum(axis=0) ) / num_samples
-        diff_square = (y - m.current_mean.reshape(1,-1,1,1)) ** 2
-        m.current_var = ( diff_square.sum(axis=(2,3)).sum(axis=0) ) / num_samples
+        m.current_mean = y.sum(axis=(0, 2, 3)) / num_samples
+        diff_square = (y - m.current_mean.reshape(1, -1, 1, 1)) ** 2
+        m.current_var = diff_square.sum(axis=(0, 2, 3)) / num_samples
     m.register_forward_pre_hook(_ema_hook)
 
 

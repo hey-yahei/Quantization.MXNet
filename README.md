@@ -13,7 +13,6 @@ performance of quantized models, especially for compact ones like MobileNet.
     * [Usage](#usage-1)
     * [Results](#results-1)
     * [Deploy to third-party platform](#deploy-to-third-party-platform)
-        * [Tengine](#tengine)
         * [ncnn](#ncnn)
 
 ## Simulate quantization     
@@ -262,14 +261,6 @@ I've tested cifar_resnet56_v1 with `Adam`(lr=1e-6) optimizer and the same augmen
 * Only subset of trainset which contained 5000 images (500 per class) is used when calibrate.
  
 ### Deploy to third-party platform
-#### [Tengine](https://github.com/OAID/Tengine)
-Tengine support int8-inference for explorer version, you can just export gluon model to mxnet model(with a `.json` file and a `.param` file) with float32 parameters. Tengine will parse it and use int8-inference online automatically.       
-Note that, in Tengine,    
-1. Weights are quantized into int8.     
-2. Inputs(Activations) are quantized into int8 or uint8(optional).
-3. BatchNorm would be fused into Convolution, and then quantize weights.
-4. Per-group quantization is used.
-
 #### [ncnn](https://github.com/Tencent/ncnn)
 ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel with [GluonConverter](https://github.com/hey-yahei/GluonConverter) at first.    
 Generate scales table just as `examples/mobilenet_gluon2ncnn.ipynb` does and convert caffemodel to ncnnmodel with `caffe2ncnn` tool which is provided by ncnn.     

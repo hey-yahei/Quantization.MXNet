@@ -75,6 +75,7 @@ def dequantize(F, x, scale):
     x = F.cast(x, "float32")
     return x * scale
 
+
 class Conv2D(nn.HybridBlock):
     def __init__(self, channels, kernel_size, strides, padding, in_channels, groups=1,
                  activation=None, use_bias=True, quantized=False,

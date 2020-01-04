@@ -264,7 +264,7 @@ I've tested cifar_resnet56_v1 with `Adam`(lr=1e-6) optimizer and the same augmen
 #### [ncnn](https://github.com/Tencent/ncnn)
 ncnn only support int8-inference for caffe model yet, so you should convert your model to caffemodel with [GluonConverter](https://github.com/hey-yahei/GluonConverter) at first.    
 Generate scales table just as `examples/mobilenet_gluon2ncnn.ipynb` does and convert caffemodel to ncnnmodel with `caffe2ncnn` tool which is provided by ncnn.     
-Note that, in ncnn,
+Note that, in ncnn,   
 1. Both weights and inputs(activations) are quantized into int8.
 2. BatchNorm should be fused into Convolution before you calculate scales for weights(retrain with fake_bn may help recover accuracy).
 3. Per-channel quantization is used. 

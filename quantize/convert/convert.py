@@ -63,7 +63,7 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
     net.apply(_convert)
 
     # Add method to update ema for `input_min` and `input_max` in convs
-    def _update_ema(self, momentum=0.99):
+    def _update_ema(self, momentum=0.9):
         for qblocks in self.collect_quantized_blocks():
             # if quantize input
             if getattr(qblocks, "input_max", None) is not None:

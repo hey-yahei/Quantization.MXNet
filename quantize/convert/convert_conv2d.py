@@ -55,11 +55,13 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
             if self.quantize_input:
                 max_ = input_max.asscalar() if self.quantize_input_offline else self.current_input_max
                 if self.quantize_args.in_signed:
+                    min_ = -max_
                     in_scale = max_ / (2 ** (self.quantize_args.in_width - 1) - 1)
                 else:
+                    min_ = 0.
                     in_scale = max_ / (2 ** self.quantize_args.in_width - 1)
                 # x = (x.clip(0., max_) / (in_scale + 1e-10)).round() * in_scale
-                x = LinearQuantizeSTE(in_scale, max_)(x)
+                x = LinearQuantizeSTE(in_scale, max_, min_)(x)
 
         # Simulate quantization for weight
         if self.quantize_args.quant_type == 'channel':

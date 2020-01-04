@@ -28,16 +28,17 @@ __author__ = 'YaHei'
 
 
 class LinearQuantizeSTE(autograd.Function):
-    def __init__(self, scale, clip=None):
+    def __init__(self, scale, clip_max=None, clip_min=None):
         super(LinearQuantizeSTE, self).__init__()
-        self.clip = clip
+        self.clip_max = clip_max
+        self.clip_min = clip_min if clip_min is not None else 0.
         self.scale = scale
 
     def forward(self, x):
-        if self.clip is None:
+        if self.clip_max is None:
             return (x / (self.scale + 1e-10)).round() * self.scale
         else:
-            return (x.clip(0., self.clip) / (self.scale + 1e-10)).round() * self.scale
+            return (x.clip(self.clip_min, self.clip_max) / (self.scale + 1e-10)).round() * self.scale
 
     def backward(self, dy):
         return dy

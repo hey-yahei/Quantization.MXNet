@@ -171,7 +171,7 @@ Reproduce works in paper [arXiv:1712.05877](https://arxiv.org/abs/1712.05877) wi
     convert_fn = {...}
     
     convert_model(net, exclude)
-    # convert_model(net, exclude, convert_fn)   # if need to specify converter
+    # convert_model(net, exclude, convert_fn)   # if need specify converter
     ```
     By default,     
     1. Convert **Conv2D**
@@ -272,5 +272,5 @@ Note that, in ncnn,
 ---------------------        
    
 ***More details refer to***
-1. (2019.01.23) [MXNet上的重训练量化 | Hey~YaHei!](https://hey-yahei.cn/2019/01/23/MXNet-RT_Quantization/)    
-2. (2019.07.23) [线性量化 | Hey~YaHei](https://hey-yahei.cn/2019/07/23/Quantization/)
+1. (2019.01.23) [MXNet上的重训练量化 | Hey~YaHei!](https://www.yuque.com/yahei/hey-yahei/quantization.mxnet)    
+2. (2019.07.23) [线性量化 | Hey~YaHei](https://www.yuque.com/yahei/hey-yahei/quantization.mxnet2)

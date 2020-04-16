@@ -113,6 +113,13 @@ def convert_model(net, exclude=[], convert_fn=default_convert_fn, custom_fn={}):
     net.enable_quantize = types.MethodType(_enable_quantize, net)
     net.disable_quantize = types.MethodType(_disable_quantize, net)
 
+    # Add method to fixed parameters(weights and bias)
+    def _fix_params(self):
+        for m in net.collect_quantized_blocks():
+            if isinstance(m, nn.Conv2D):
+                m.fixed_params = 0
+    net.fix_params = types.MethodType(_fix_params, net)
+
 
 def convert_to_relu6(net, exclude=[]):
     """

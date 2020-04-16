@@ -330,6 +330,7 @@ if __name__ == "__main__":
             print('*' * (25 * 2 + len(' Naive Calibration ')))
             print()
         if not opt.eval_per_calib:
+            net.fix_params()
             net.quantize_input(enable=True, online=False)
             acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
             print('*' * 25 + ' Result ' + '*' * 25)
@@ -338,6 +339,7 @@ if __name__ == "__main__":
             print('*' * (25 * 2 + len(' Result ')))
             print()
     else:
+        net.fix_params()
         net.quantize_input(enable=True, online=True)
         acc, avg_acc = evaluate(net, classes, eval_loader, ctx=ctx, update_ema=False)
         print('*'*25 + ' Result ' + '*'*25)

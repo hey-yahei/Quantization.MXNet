@@ -9,3 +9,5 @@ from .convert_bn import *
 from .convert import *
 
 from .convert_dense import *
+
+from . import wino_matrix

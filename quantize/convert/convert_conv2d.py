@@ -23,12 +23,13 @@
 
 import types
 from collections import namedtuple
+import numpy as np
 
 from mxnet import nd
-from mxnet import autograd
 from mxnet.gluon.nn import Conv2D
 
 from .ste_func import LinearQuantizeSTE
+from .wino_matrix import Winograd_G
 
 __all__ = ['gen_conv2d_converter']
 __author__ = "YaHei"
@@ -37,7 +38,7 @@ __author__ = "YaHei"
 QuantizedArgs = namedtuple("ConvQuantizedArgs",
                            "quantize_input in_signed in_width "
                            "wt_width quant_type "
-                           "fake_bn")
+                           "fake_bn wino_quantize")
 
 
 def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
@@ -67,12 +68,19 @@ def _conv2d_forward(self, F, x, weight, bias=None, input_max=None,
         # Simulate quantization for weight
         if self.fixed_params != 1:
             if self.quantize_args.quant_type == 'channel':
+                if self.quantize_args.wino_quantize != 'none' and self._kwargs['kernel'] == (3, 3):
+                    G = Winograd_G[self.quantize_args.wino_quantize].as_in_context(weight.context)
+                    weight = nd.dot(nd.dot(G, weight.transpose((2, 3, 0, 1))).transpose((2, 3, 0, 1)), G.T)
                 num = self._kwargs['num_filter']
                 max_ = weight.abs().reshape((num, -1)).max(axis=1)
                 wt_scale = max_ / (2 ** (self.quantize_args.wt_width - 1) - 1)
                 wt_scale = wt_scale.reshape((num, 1, 1, 1))
                 # weight_q = (weight / (wt_scale + 1e-10)).round() * wt_scale
                 weight_q = LinearQuantizeSTE(wt_scale)(weight)
+                if self.quantize_args.wino_quantize != 'none' and self._kwargs['kernel'] == (3, 3):
+                    GI = nd.array(np.linalg.pinv(G.asnumpy()), ctx=weight.context)
+                    GTI = nd.array(np.linalg.pinv(G.T.asnumpy()), ctx=weight.context)
+                    weight_q = nd.dot(nd.dot(GI, weight_q.transpose((2, 3, 0, 1))).transpose((2, 3, 0, 1)), GTI)
             elif self.quantize_args.quant_type == 'group':
                 num = self._kwargs['num_group']
                 max_ = weight.abs().reshape((num, -1)).max(axis=1)
@@ -148,7 +156,8 @@ def _add_fake_bn_ema_hook(m):
 
 def gen_conv2d_converter(weight_width=8, quant_type="layer",
                          quantize_input=True, input_signed=False, input_width=8,
-                         fake_bn=False):
+                         fake_bn=False, wino_quantize="none"):
+    assert wino_quantize in ("none", "F23", "F43", "F63")
     def _converter(m):
         assert isinstance(m, Conv2D)
 
@@ -160,7 +169,8 @@ def gen_conv2d_converter(weight_width=8, quant_type="layer",
         m.origin_forward = m.hybrid_forward
         m.hybrid_forward = types.MethodType(_conv2d_forward, m)
         m.quantize_args = QuantizedArgs(in_signed=input_signed, in_width=input_width, wt_width=weight_width,
-                                        quantize_input=quantize_input, fake_bn=fake_bn, quant_type=quant_type)
+                                        quantize_input=quantize_input, fake_bn=fake_bn, quant_type=quant_type,
+                                        wino_quantize=wino_quantize)
         m.fixed_params = -1
         m.enable_quantize = True
         m.quantize_input = quantize_input

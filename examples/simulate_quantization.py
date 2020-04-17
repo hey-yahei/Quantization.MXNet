@@ -98,6 +98,9 @@ def parse_args():
                         help='exclude first convolution layer when quantize. (default: true)')
     parser.add_argument('--fixed-random-seed', type=int, default=7,
                         help='set random_seed for numpy to provide reproducibility. (default: 7)')
+    parser.add_argument('--wino_quantize', type=str, default="none",
+                        choices=['none', 'F23', 'F43', 'F63'],
+                        help='quantize weights for Conv2D in Winograd domain (default: none)')
     opt = parser.parse_args()
 
     if opt.list_models:
@@ -210,6 +213,7 @@ if __name__ == "__main__":
     convert_fn = {
         nn.Conv2D: convert.gen_conv2d_converter(
             quantize_input=True,
+            wino_quantize=opt.wino_quantize,
             fake_bn=opt.merge_bn,
             input_signed=opt.input_signed == 'true',
             weight_width=opt.weight_bits_width,

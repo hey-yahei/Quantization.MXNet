@@ -51,6 +51,7 @@ python simulate_quantization.py --model=mobilnet1.0
                                     [--disable-cudnn-autotune] [--eval-per-calib]
                                     [--exclude-first-conv {false,true}]
                                     [--fixed-random-seed FIXED_RANDOM_SEED]
+                                    [--wino_quantize {none,F23,F43,F63}]
     
     Simulate for quantization.
     
@@ -107,6 +108,9 @@ python simulate_quantization.py --model=mobilnet1.0
       --fixed-random-seed FIXED_RANDOM_SEED
                             set random_seed for numpy to provide reproducibility.
                             (default: 7)
+      --wino_quantize {none,F23,F43,F63}
+                            quantize weights for Conv2D in Winograd domain
+                            (default: none)
     ```    
 
 ### Results      
